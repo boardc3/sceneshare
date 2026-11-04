@@ -59,6 +59,16 @@ export const config = {
   // sender's own mail app sends the email, with the same tracked link.
   mailKey: env.RESEND_API_KEY || '',
   mailFrom: env.SHARE_FROM_EMAIL || '',
+  // Billing (api/_lib/billing.js). BILLING_MODE: off | preview | stripe.
+  //   preview (default): plans, limits and the upgrade flow all work, no card is taken.
+  //   stripe: Stripe Checkout. Test keys (sk_test_…) never charge real cards;
+  //   live keys (sk_live_…) only work with STRIPE_ALLOW_LIVE=1.
+  billingMode: ['off', 'preview', 'stripe'].includes(env.BILLING_MODE) ? env.BILLING_MODE : 'preview',
+  stripeKey: env.STRIPE_SECRET_KEY || '',
+  stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET || '',
+  stripeAllowLive: /^(1|true|yes)$/i.test(env.STRIPE_ALLOW_LIVE || ''),
+  stripePriceMonthly: env.STRIPE_PRICE_MONTHLY || '',
+  stripePriceYearly: env.STRIPE_PRICE_YEARLY || '',
 }
 
 export const features = () => ({
@@ -71,4 +81,15 @@ export const features = () => ({
   sharing: Boolean(config.databaseUrl),
   accounts: Boolean(config.authUrl && config.databaseUrl),
   mail: Boolean(config.mailKey && config.mailFrom),
+  billing: billingState(),
 })
+
+// What billing does right now: 'off', 'preview' (no money moves), 'test' (Stripe
+// test mode) or 'live'. A missing or refused Stripe key falls back to preview.
+export function billingState() {
+  if (config.billingMode === 'off') return 'off'
+  if (config.billingMode !== 'stripe') return 'preview'
+  if (/^(sk|rk)_test_/.test(config.stripeKey)) return 'test'
+  if (/^(sk|rk)_live_/.test(config.stripeKey) && config.stripeAllowLive) return 'live'
+  return 'preview'
+}

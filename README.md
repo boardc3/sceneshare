@@ -45,11 +45,37 @@ Verified on production, 2026-11-04:
 | `BLOB_READ_WRITE_TOKEN` | optional: Vercel Blob for images. When present, new images go to Blob and Neon keeps only the records | no |
 | `GEMINI_IMAGE_MODEL` | optional override, default `gemini-3.1-flash-image` (falls back to `-preview`) | no |
 | `GEMINI_IMAGE_SIZE` | optional, default `2K` | no |
+| `RESEND_API_KEY`, `SHARE_FROM_EMAIL` | share emails sent by Sceneshare (Resend, verified domain). Without them the sender's own mail app opens | for emailed shares |
+| `BILLING_MODE` | `preview` (default: plans, limits and upgrades all work, no money moves), `stripe` (Stripe Checkout), `off` (no limits) | no |
+| `STRIPE_SECRET_KEY` | Stripe secret key. `sk_test_…` = test mode, no real charges. `sk_live_…` is refused unless `STRIPE_ALLOW_LIVE=1` | for payments |
+| `STRIPE_WEBHOOK_SECRET` | signing secret of the webhook endpoint `https://www.sceneshare.app/api/billing?webhook=1` | for payments |
+| `STRIPE_ALLOW_LIVE` | `1` to accept a live key (real charges) | at launch |
+| `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_YEARLY` | optional Stripe price ids; without them Checkout uses $50/month and $500/year inline | no |
 
 Tables create themselves on first use. `/api/health` shows which features are switched on.
 Maps are Mapbox GL JS (`mapbox-gl` 3.33.0, its own lazily loaded chunk), with the token served from
 `/api/health` so it can change in Vercel without a rebuild. This replaces doc 07's keyless
 Leaflet/Esri rule for this project, at Chris's request (2026-11-04).
+
+## Plans and billing
+
+Free: 1 home, 2 designs per home, 5 emailed shares per home (copied links unlimited).
+Pro: $50/month or $500/year, unlimited, with a fair-use cap of 40 house restyles per 30 days.
+Admins (`ADMIN_EMAILS`) are always Pro. Limits are enforced on the server (`api/_lib/billing.js`)
+and answered with HTTP 402 `plan_limit`, which opens the upgrade prompt. The nav badge and
+`/plan` show the plan, homes left or days left. Plan state lives on `users`; every billing
+action and webhook is logged in `billing_events` and shown on `/admin`.
+
+Going from preview to payments:
+1. Stripe (test mode) → Developers → API keys: copy the secret key into `STRIPE_SECRET_KEY`.
+2. Developers → Webhooks → Add endpoint `https://www.sceneshare.app/api/billing?webhook=1` with
+   the `customer.subscription.*`, `checkout.session.completed` and `invoice.payment_failed`
+   events; copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+3. Settings → Billing → Customer portal: save the default settings once (turns on "Manage billing").
+4. Set `BILLING_MODE=stripe`, redeploy. Test with card 4242 4242 4242 4242.
+5. At launch: live keys + a live webhook, `STRIPE_ALLOW_LIVE=1`, redeploy.
+
+Preview upgrades stop counting once Stripe is on (and the reverse), so nobody keeps a free Pro.
 
 ## What gets saved (Neon)
 

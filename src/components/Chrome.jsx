@@ -3,6 +3,7 @@ import { useI18n } from '../i18n.js'
 import { consent, gpc, onConsent, setConsent, track } from '../lib/analytics.js'
 import { currentUser, onAuthRequest, requestReset, signInEmail, signInGoogle, signOut, signUpEmail, useAuth } from '../lib/auth.js'
 import { post } from '../lib/api.js'
+import { homesLeft, loadBilling, useBilling } from '../lib/billing.js'
 import { isEmail } from '../lib/format.js'
 import { Link, useRouter } from '../router.jsx'
 import PasswordInput from './PasswordInput.jsx'
@@ -10,8 +11,12 @@ import PasswordInput from './PasswordInput.jsx'
 export function Nav({ tone = 'light' }) {
   const { t, lang, setLang } = useI18n()
   const { user, ready, admin } = useAuth()
-  const { navigate } = useRouter()
+  const { navigate, path } = useRouter()
   const [menu, setMenu] = useState(false)
+  // Keep the plan badge current as people move around (homes and designs change it).
+  useEffect(() => {
+    if (user) loadBilling()
+  }, [user?.id, path]) // eslint-disable-line react-hooks/exhaustive-deps
   const ref = useRef(null)
   useEffect(() => {
     if (!menu) return
@@ -39,6 +44,7 @@ export function Nav({ tone = 'light' }) {
             中文
           </button>
         </div>
+        {ready && user && <PlanBadge />}
         {!ready ? (
           <span className="nav__signin nav__signin--wait" aria-hidden="true" />
         ) : user ? (
@@ -52,6 +58,9 @@ export function Nav({ tone = 'light' }) {
                 <p className="acct__who">{user.email}</p>
                 <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/account'))}>
                   {t('nav.homes')}
+                </button>
+                <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/plan'))}>
+                  {t('nav.plan')}
                 </button>
                 <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/settings'))}>
                   {t('nav.settings')}
@@ -82,6 +91,80 @@ export function Nav({ tone = 'light' }) {
         )}
       </nav>
     </header>
+  )
+}
+
+// "Free · 1 home left" / "Pro · 23 days left" beside the account menu.
+function PlanBadge() {
+  const { t } = useI18n()
+  const { billing: b } = useBilling()
+  if (!b || b.mode === 'off') return null
+  const pro = b.plan === 'pro'
+  let detail = ''
+  let short = ''
+  if (pro && b.source !== 'admin' && b.daysLeft != null) {
+    detail = t(b.cancelAtPeriodEnd ? 'plan.badge.ends' : 'plan.badge.days', { n: b.daysLeft })
+    short = t('plan.badge.shortDays', { n: b.daysLeft })
+  } else if (pro && b.source === 'admin') detail = t('plan.badge.admin')
+  else if (!pro) {
+    const left = homesLeft(b)
+    if (left != null) {
+      detail = t(left === 1 ? 'plan.badge.home' : 'plan.badge.homes', { n: left })
+      short = t('plan.badge.shortHomes', { n: left })
+    }
+  }
+  const warn = (pro && b.daysLeft != null && b.daysLeft <= 5) || (!pro && homesLeft(b) === 0)
+  return (
+    <Link to="/plan" className={`planbadge ${pro ? 'planbadge--pro' : ''} ${warn ? 'planbadge--warn' : ''}`} title={t('plan.badge.title')}>
+      <strong>{pro ? 'Pro' : t('plan.free')}</strong>
+      {detail && <span className="planbadge__detail">{detail}</span>}
+      {short && (
+        <span className="planbadge__short" aria-hidden="true">
+          {short}
+        </span>
+      )}
+      {(b.mode === 'preview' || b.mode === 'test') && <span className="planbadge__mode">{t(`plan.mode.${b.mode}.short`)}</span>}
+    </Link>
+  )
+}
+
+// Opens when the server says a plan limit was reached.
+export function UpgradePrompt() {
+  const { t } = useI18n()
+  const { navigate } = useRouter()
+  const [info, setInfo] = useState(null)
+  useEffect(() => {
+    const on = (e) => {
+      setInfo(e.detail || {})
+      loadBilling()
+      track('plan_limit_hit', { limit: e.detail?.limit })
+    }
+    window.addEventListener('ss:plan-limit', on)
+    return () => window.removeEventListener('ss:plan-limit', on)
+  }, [])
+  if (!info) return null
+  const close = () => setInfo(null)
+  return (
+    <Modal labelledBy="upgrade-title" onClose={close}>
+      <p className="page__eyebrow">{t('plan.limit.eyebrow')}</p>
+      <h2 id="upgrade-title">{t(`plan.limit.${info.limit}.title`, { n: info.max })}</h2>
+      <p>{t(`plan.limit.${info.limit}.body`, { n: info.max })}</p>
+      <div className="dialog__actions">
+        <button
+          type="button"
+          className="btn btn--glow"
+          onClick={() => {
+            close()
+            navigate('/plan')
+          }}
+        >
+          {info.limit === 'runs' ? t('plan.seePlan') : t('plan.seePro')}
+        </button>
+        <button type="button" className="btn btn--quiet" onClick={close}>
+          {t('plan.notNow')}
+        </button>
+      </div>
+    </Modal>
   )
 }
 

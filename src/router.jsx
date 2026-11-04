@@ -50,6 +50,7 @@ export function match(path) {
   if (p === '/account') return { page: 'account' }
   if (p === '/admin') return { page: 'admin' }
   if (p === '/settings') return { page: 'settings' }
+  if (p === '/plan') return { page: 'plan' }
   if (p === '/reset') return { page: 'reset' }
   if (p === '/terms') return { page: 'legal', doc: 'terms' }
   if (p === '/privacy') return { page: 'legal', doc: 'privacy' }

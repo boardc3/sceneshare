@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { AuthModal, CookieBanner, Footer, Nav } from './components/Chrome.jsx'
+import { AuthModal, CookieBanner, Footer, Nav, UpgradePrompt } from './components/Chrome.jsx'
 import { I18n, translate, useI18n } from './i18n.js'
 import { initAnalytics, pageView, reportError } from './lib/analytics.js'
 import { refresh, savePrefs, useAuth } from './lib/auth.js'
@@ -13,6 +13,7 @@ import { Link, Router, match, useRouter } from './router.jsx'
 const Account = lazy(() => import('./pages/Account.jsx'))
 const Admin = lazy(() => import('./pages/Admin.jsx'))
 const Legal = lazy(() => import('./pages/Legal.jsx'))
+const Plan = lazy(() => import('./pages/Plan.jsx'))
 const PrivacyRequest = lazy(() => import('./pages/PrivacyRequest.jsx'))
 const Reset = lazy(() => import('./pages/Reset.jsx'))
 const Settings = lazy(() => import('./pages/Settings.jsx'))
@@ -133,6 +134,7 @@ function Pages() {
           {m.page === 'admin' && <Admin />}
           {m.page === 'reset' && <Reset />}
           {m.page === 'settings' && <Settings />}
+          {m.page === 'plan' && <Plan />}
           {m.page === 'legal' && <Legal key={m.doc} doc={m.doc} />}
           {m.page === 'privacyRequest' && <PrivacyRequest />}
           {m.page === 'notfound' && <NotFound />}
@@ -140,6 +142,7 @@ function Pages() {
       </ErrorBoundary>
       <Footer />
       <AuthModal />
+      <UpgradePrompt />
       <CookieBanner />
     </>
   )

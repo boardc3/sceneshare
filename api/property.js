@@ -1,3 +1,4 @@
+import { assertCanAddHome } from './_lib/billing.js'
 import { createOwnProperty, logSubmission, upsertProperty } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
 import { geocode, nearby } from './_lib/mapbox.js'
@@ -16,6 +17,7 @@ export default route(
     const lang = body.lang === 'zh' ? 'zh' : 'en'
 
     if (body.own) {
+      await assertCanAddHome(user)
       const id = newId()
       await createOwnProperty(id, { user, lang })
       await logSubmission({ user, kind: 'own_start', propertyId: id, lang })
@@ -27,6 +29,7 @@ export default route(
     // Adding an address to an own-photos home: only its owner may.
     const existing = validId(body.propertyId) ? body.propertyId : null
     if (existing) await requireOwner(req, res, existing)
+    else await assertCanAddHome(user)
 
     const addr = await geocode({ address, lang })
     if (!addr) throw new ApiError(404, 'address_not_found', 'We could not find that address. Check the spelling and include the city and state.')

@@ -1,4 +1,5 @@
 import { authCall, authEnabled, sessionUser } from '../_lib/auth.js'
+import { cancelForDeletion } from '../_lib/billing.js'
 import { addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, setPrefs, touchUser } from '../_lib/db.js'
 import { isAdmin, newId, requireUser } from '../_lib/gate.js'
 import { ApiError, query, readJson, route, send } from '../_lib/http.js'
@@ -38,6 +39,11 @@ export default route(
     if (body.op !== 'delete') throw new ApiError(400, 'bad_op', 'Unknown request.')
     const user = await requireUser(req, res)
     if (body.confirm !== 'DELETE') throw new ApiError(400, 'confirm_required', 'Type DELETE to confirm.')
+    // A paid subscription stops before the account goes, so no further charges.
+    const canceled = await cancelForDeletion(user).catch((e) => {
+      console.error(JSON.stringify({ t: 'account', msg: 'subscription cancel failed', err: e.message }))
+      throw new ApiError(502, 'subscription_cancel_failed', 'We could not cancel your subscription just now, so your account was not deleted. Please try again.')
+    })
     const removed = await deleteUserData(user)
     // The sign-in record itself lives in Neon Auth.
     let r = await authCall(req, res, 'delete-user', { body: {} }).catch((e) => ({ ok: false, status: 0, data: { message: e.message } }))
@@ -53,7 +59,7 @@ export default route(
       // Finish by hand (see /admin) rather than leave a half-deleted account unrecorded.
       await addPrivacyRequest({ id: newId(10), kind: 'delete_sign_in', email: user.email, userId: user.id, details: 'Data deleted automatically; remove the sign-in record in Neon Auth.', meta: { status: r.status, upstream: r.data } })
     }
-    res._meta = { properties: removed.properties, authDeleted: r.ok }
+    res._meta = { properties: removed.properties, authDeleted: r.ok, subscriptionCanceled: canceled }
     console.log(JSON.stringify({ t: 'account', msg: 'deleted', userId: user.id, properties: removed.properties, authDeleted: r.ok }))
     send(res, 200, { ok: true, deleted: true, properties: removed.properties, signInRemoved: r.ok })
   },

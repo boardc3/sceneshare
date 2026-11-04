@@ -1,4 +1,5 @@
 import { sessionUser } from '../_lib/auth.js'
+import { assertCanEmail } from '../_lib/billing.js'
 import { config } from '../_lib/config.js'
 import { createShare, listShares, logSubmission, markShareSent, propertyRow } from '../_lib/db.js'
 import { newId, requireOwner, validId } from '../_lib/gate.js'
@@ -36,6 +37,8 @@ export default route(
     }
     const user = await sessionUser(req, res)
     const byOwner = Boolean(user && row.owner_user_id === user.id)
+    // Free plan: a few emailed shares per home (copying the link is always free).
+    if (channel === 'email' && byOwner) await assertCanEmail(user, row.id, recipients.length)
     const lang = body.lang === 'zh' ? 'zh' : 'en'
     // The browser may propose the id, so a copied or texted link works instantly.
     const id = /^[a-z0-9]{10}$/.test(body.id || '') ? body.id : newId(10)

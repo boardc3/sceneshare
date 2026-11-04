@@ -213,6 +213,19 @@ async function migrate(s) {
   await s`alter table users add column if not exists email_verified boolean`
   await s`alter table users add column if not exists prefs jsonb`
   await s`alter table users drop constraint if exists users_email_key`
+  // Billing (see api/_lib/billing.js). One subscription per account.
+  for (const col of ['plan text', 'plan_status text', 'plan_source text', 'plan_interval text', 'period_end timestamptz', 'cancel_at_period_end boolean', 'stripe_customer_id text', 'stripe_subscription_id text', 'plan_updated_at timestamptz']) {
+    await s.query(`alter table users add column if not exists ${col}`)
+  }
+  await s`create table if not exists billing_events (
+    id text primary key,
+    at timestamptz not null default now(),
+    source text not null,
+    type text not null,
+    user_id text,
+    data jsonb
+  )`
+  await s`create index if not exists billing_events_user_idx on billing_events (user_id, at desc)`
 
   await s`create table if not exists events (
     id bigserial primary key,
@@ -287,7 +300,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
 
 async function upToDate(s) {
   try {
@@ -691,7 +704,7 @@ export async function addPrivacyRequest({ id, kind, email, userId = null, detail
 export async function exportUser(user) {
   const s = await ensure()
   if (!s) return null
-  const [account] = await s`select id, email, name, created_at, last_seen_at from users where id = ${user.id}`
+  const [account] = await s`select id, email, name, created_at, last_seen_at, plan, plan_status, plan_source, plan_interval, period_end, cancel_at_period_end from users where id = ${user.id}`
   const lead = await s`select email, first_seen, last_seen, lang, country, region, source from leads where email = ${user.email}`
   const properties = await s`select id, data, created_at, updated_at, share_views from properties where owner_user_id = ${user.id}`
   const designs = await s`select * from designs where user_id = ${user.id} order by created_at`
@@ -718,6 +731,7 @@ export async function deleteUserData(user) {
   await s`delete from shares where user_id = ${user.id}`
   await s`update api_log set user_id = null where user_id = ${user.id}`
   await s`delete from leads where email = ${user.email}`
+  await s`update billing_events set user_id = null where user_id = ${user.id}`
   await s`delete from users where id = ${user.id}`
   return { properties: props.length }
 }
@@ -770,7 +784,9 @@ export async function adminOverview() {
   const errors = await s`select at, method, route, status, code, ms, meta from api_log where status >= 500 order by at desc limit 40`
   const clientErrors = await s`select at, path, props from events where name = 'client_error' order by at desc limit 25`
   const leads = await s`select email, first_seen, last_seen, source, first_context, country, region, submissions from leads order by last_seen desc limit 40`
-  const users = await s`select id, email, name, email_verified, created_at, last_seen_at from users order by created_at desc limit 40`
+  const users = await s`select id, email, name, email_verified, created_at, last_seen_at, coalesce(plan, 'free') as plan, plan_source, plan_status, period_end from users order by created_at desc limit 40`
+  const plans = await s`select coalesce(plan, 'free') as plan, coalesce(plan_source, '-') as source, coalesce(plan_status, '-') as status, count(*)::int as n from users group by 1, 2, 3 order by n desc`
+  const billing = await s`select at, source, type, user_id, data from billing_events order by at desc limit 40`
   const properties = await s`select id, formatted_address, owner_email, origin, share_views, created_at, updated_at,
       jsonb_array_length(coalesce(data->'photos', '[]'::jsonb)) as photos, jsonb_array_length(coalesce(data->'designs', '[]'::jsonb)) as designs
     from properties order by updated_at desc limit 40`
@@ -778,5 +794,73 @@ export async function adminOverview() {
   const privacy = await s`select id, at, kind, email, status, details from privacy_requests order by at desc limit 30`
   const shares = await s`select sh.created_at, sh.property_id, p.formatted_address, sh.channel, sh.by_owner, sh.recipient_count, sh.sent, sh.opens
     from shares sh left join properties p on p.id = sh.property_id order by sh.created_at desc limit 40`
-  return { totals: { ...totals, visitors7d, pageViews7d }, topEvents, topPages, routes, errors, clientErrors, leads, users, properties, designs, privacy, shares }
+  return { totals: { ...totals, visitors7d, pageViews7d }, topEvents, topPages, routes, errors, clientErrors, leads, users, plans, billing, properties, designs, privacy, shares }
+}
+
+// ---------------------------------------------------------------- billing
+
+const PLAN_COLS = { plan: 'plan', status: 'plan_status', source: 'plan_source', interval: 'plan_interval', periodEnd: 'period_end', cancelAtPeriodEnd: 'cancel_at_period_end', customerId: 'stripe_customer_id', subscriptionId: 'stripe_subscription_id' }
+
+export async function getBillingRow(userId) {
+  const s = await ensure()
+  if (!s) return null
+  const [row] = await s`select id, email, plan, plan_status, plan_source, plan_interval, period_end, cancel_at_period_end,
+      stripe_customer_id, stripe_subscription_id, plan_updated_at from users where id = ${userId}`
+  return row || null
+}
+
+// Make sure the account row exists before billing writes to it.
+export async function ensureUserRow(user) {
+  const s = await ensure()
+  if (!s) return
+  await s`insert into users (id, email, name, email_verified) values (${user.id}, ${user.email}, ${user.name || null}, ${user.emailVerified})
+    on conflict (id) do nothing`
+}
+
+export async function setBilling(userId, patch) {
+  const s = await ensure()
+  if (!s) return null
+  const sets = []
+  const vals = []
+  for (const [k, col] of Object.entries(PLAN_COLS)) {
+    if (!(k in patch)) continue
+    vals.push(patch[k] ?? null)
+    sets.push(`${col} = $${vals.length}`)
+  }
+  if (!sets.length) return getBillingRow(userId)
+  vals.push(userId)
+  await s.query(`update users set ${sets.join(', ')}, plan_updated_at = now() where id = $${vals.length}`, vals)
+  return getBillingRow(userId)
+}
+
+export async function userByStripeCustomer(customerId) {
+  const s = await ensure()
+  if (!s || !customerId) return null
+  const [row] = await s`select id, email from users where stripe_customer_id = ${customerId}`
+  return row || null
+}
+
+// Returns false when this event id was already recorded (Stripe retries webhooks).
+export async function recordBillingEvent({ id, source, type, userId = null, data = null }) {
+  const s = await ensure()
+  if (!s) return true
+  const rows = await s`insert into billing_events (id, source, type, user_id, data) values (${id}, ${source}, ${type}, ${userId}, ${j(data)}::jsonb)
+    on conflict (id) do nothing returning id`
+  return rows.length > 0
+}
+
+export async function usageFor(userId, propertyId = null) {
+  const s = await ensure()
+  if (!s) return { homes: 0, runs30d: 0 }
+  const since = new Date(Date.now() - 30 * 864e5).toISOString()
+  const [h] = await s`select count(*)::int as n from properties where owner_user_id = ${userId}`
+  const [r] = await s`select count(*)::int as n from designs where user_id = ${userId} and created_at > ${since}`
+  const out = { homes: h?.n || 0, runs30d: r?.n || 0 }
+  if (propertyId) {
+    const [d] = await s`select jsonb_array_length(coalesce(data->'designs', '[]'::jsonb))::int as n from properties where id = ${propertyId}`
+    const [e] = await s`select coalesce(sum(recipient_count), 0)::int as n from shares where property_id = ${propertyId} and by_owner and channel = 'email'`
+    out.designs = d?.n || 0
+    out.emails = e?.n || 0
+  }
+  return out
 }

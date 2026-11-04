@@ -127,12 +127,43 @@ function Terms() {
       <h2>9. Third-party services</h2>
       <p>
         The Service relies on providers including Vercel (hosting and analytics), Neon (database and sign-in), Google (Gemini image generation and Google sign-in),
-        Mapbox (maps and location search) and ScraperAPI (retrieving public listing pages). Their services are subject to their own terms. Signing in with Google is
+        Mapbox (maps and location search), ScraperAPI (retrieving public listing pages), Stripe (payments) and Resend (sending share emails). Their services are subject to their own terms. Signing in with Google is
         also subject to Google’s terms and privacy policy.
       </p>
 
-      <h2>10. Fees</h2>
-      <p>The Service is currently free. If we introduce paid features we will tell you the price and terms before you are charged.</p>
+      <h2 id="subscriptions">10. Plans, subscriptions and automatic renewal</h2>
+      <p>
+        Sceneshare has a free plan and a paid plan, <strong>Sceneshare Pro</strong>. The current prices, what each plan includes and its limits are shown on the{' '}
+        <Link to="/plan">Plan and billing</Link> page before you subscribe.
+      </p>
+      <ul>
+        <li>
+          <strong>Automatic renewal.</strong> Pro is a subscription that <strong>renews automatically</strong> at the end of each monthly or yearly period, at the
+          price shown when you subscribed, and is charged to the payment method you gave, <strong>until you cancel</strong>. We will tell you before any price
+          change takes effect, and you can cancel before it applies.
+        </li>
+        <li>
+          <strong>Cancelling.</strong> You can cancel online at any time from the Plan and billing page, with no need to contact us. Cancelling stops the next
+          renewal; Pro stays on until the end of the period you have paid for, then your account moves to the free plan. Your homes and designs are kept, but
+          free-plan limits apply to new ones.
+        </li>
+        <li>
+          <strong>Refunds.</strong> Payments are not refundable for partial periods, except where the law requires it or we decide otherwise. If something went
+          wrong, contact us and we will look at it.
+        </li>
+        <li>
+          <strong>Payments.</strong> Payments are processed by Stripe, which receives your card details directly; we never see or store your full card number. If a
+          renewal payment fails, Stripe may retry it, and Pro may end if the payment cannot be collected.
+        </li>
+        <li>
+          <strong>Limits and fair use.</strong> The free plan is limited in the number of homes, designs per home and emailed shares per home. Pro includes a
+          fair-use allowance of house restyles each 30 days to keep the Service fast for everyone; we will raise it on request for genuine use.
+        </li>
+        <li>
+          <strong>Preview and test periods.</strong> While payments are not switched on, upgrades may be offered free of charge for a stated period. No payment is
+          taken, and we will ask for your consent before any paid subscription begins.
+        </li>
+      </ul>
 
       <h2>11. Privacy and data storage</h2>
       <p>
@@ -294,6 +325,8 @@ function Privacy() {
         <li><strong>Google</strong> — the Gemini image model (receives the photographs and instructions needed to generate each design); Google sign-in if you choose it; Google Fonts (your browser requests fonts from Google, which receives your IP address).</li>
         <li><strong>Mapbox</strong> — maps, address search and nearby places (receives the addresses you search and, from your browser, map requests).</li>
         <li><strong>ScraperAPI</strong> — retrieves public listing pages for the address you entered.</li>
+        <li><strong>Stripe</strong> — payments for Sceneshare Pro (receives your name, email, payment details and billing address when you subscribe).</li>
+        <li><strong>Resend</strong> — sends the share emails you ask us to send (receives the recipient addresses, your name and your message).</li>
       </ul>
       <p>
         <strong>Share pages are public to anyone with the link.</strong> When you share a home, its address, photographs, designs and map are visible to whoever

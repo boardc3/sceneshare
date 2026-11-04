@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from 'react'
 import { track } from './analytics.js'
 import { get, post, setAuthRecovery } from './api.js'
+import { clearBilling, loadBilling } from './billing.js'
 
 const state = { ready: false, user: null, admin: false, accounts: true, claimed: 0, prefs: {} }
 let snapshot = { ...state }
@@ -37,6 +38,8 @@ export async function refresh() {
   try {
     const d = await get('/api/account')
     set({ ready: true, user: d.user, admin: !!d.admin, accounts: d.accounts !== false, claimed: d.claimed || 0, prefs: d.prefs || {} })
+    if (d.user) loadBilling()
+    else clearBilling()
     if (verifier && d.user) track('sign_in', { method: 'google' })
     if (verifier && !d.user) track('sign_in_failed', { method: 'google' })
   } catch {
@@ -116,6 +119,7 @@ export async function signOut() {
   await call('sign-out', {})
   track('sign_out')
   set({ user: null, admin: false, claimed: 0 })
+  clearBilling()
 }
 
 export const sendVerifyCode = (email) => call('email-otp/send-verification-otp', { email, type: 'email-verification' })

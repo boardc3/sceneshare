@@ -152,6 +152,13 @@ export default function Admin() {
       </section>
 
       <section>
+        <h2>Plans</h2>
+        <Table rows={o.plans || []} cols={[['Plan', (r) => r.plan], ['Source', (r) => r.source], ['Status', (r) => r.status], ['Accounts', (r) => r.n]]} />
+        <h2>Billing log</h2>
+        <Table rows={o.billing || []} cols={[['When', (r) => when(r.at)], ['Source', (r) => r.source], ['Event', (r) => r.type], ['Account', (r) => r.user_id || ''], ['Detail', (r) => (r.data ? JSON.stringify(r.data).slice(0, 120) : '')]]} empty="No billing activity yet." />
+      </section>
+
+      <section>
         <h2>Shares</h2>
         <Table rows={o.shares} cols={[['When', (r) => when(r.created_at)], ['Home', (r) => <Link to={`/p/${r.property_id}`}>{r.formatted_address || r.property_id}</Link>], ['How', (r) => r.channel], ['By', (r) => (r.by_owner ? 'owner' : 'buyer')], ['Recipients', (r) => r.recipient_count], ['Sent by us', (r) => (r.sent ? 'yes' : 'no')], ['Opens', (r) => r.opens]]} empty="No shares yet." />
       </section>
@@ -164,7 +171,7 @@ export default function Admin() {
       <div className="admin__cols">
         <section>
           <h2>Accounts</h2>
-          <Table rows={o.users} cols={[['Joined', (r) => when(r.created_at)], ['Email', (r) => r.email], ['Verified', (r) => (r.email_verified ? 'yes' : 'no')], ['Last seen', (r) => when(r.last_seen_at)]]} />
+          <Table rows={o.users} cols={[['Joined', (r) => when(r.created_at)], ['Email', (r) => r.email], ['Verified', (r) => (r.email_verified ? 'yes' : 'no')], ['Plan', (r) => (r.plan === 'pro' ? `Pro (${r.plan_source || ''}${r.period_end ? `, to ${when(r.period_end)}` : ''})` : 'Free')], ['Last seen', (r) => when(r.last_seen_at)]]} />
         </section>
         <section>
           <h2>Emails</h2>

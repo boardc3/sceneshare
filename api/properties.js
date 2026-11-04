@@ -1,5 +1,6 @@
 import { addDesign, normalizeProperty, publicView, removeDesign, removePhoto, setDesign, setHidden, pickVersion } from '../shared/model.js'
 import { sessionUser } from './_lib/auth.js'
+import { assertCanAddDesign } from './_lib/billing.js'
 import { config } from './_lib/config.js'
 import { deleteProperty, listProperties, logSubmission, mutateProperty, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
@@ -51,6 +52,7 @@ async function write(req, res) {
   const id = row.id
   res._meta = { propertyId: id, op }
   const lang = body.lang === 'zh' ? 'zh' : 'en'
+  if (op === 'design.create') await assertCanAddDesign(user, id)
 
   if (op === 'property.delete') {
     await deleteProperty(id)

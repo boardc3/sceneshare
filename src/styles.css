@@ -2582,3 +2582,208 @@ body.is-modal {
 .phototools__row--solo {
   margin-top: 14px;
 }
+
+/* ---------------------------------------------------------------- plan and billing */
+.planbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: var(--step--1);
+  line-height: 1.1;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.planbadge:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+.planbadge:focus-visible {
+  outline: 2px solid var(--glow);
+  outline-offset: 2px;
+}
+.planbadge strong {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.planbadge--pro strong {
+  color: var(--glow);
+}
+.nav--light .planbadge--pro strong {
+  color: #a8691a;
+}
+.planbadge__detail {
+  opacity: 0.85;
+}
+.planbadge--warn .planbadge__detail {
+  color: var(--glow);
+  opacity: 1;
+}
+.nav--light .planbadge--warn .planbadge__detail {
+  color: var(--error);
+}
+.planbadge__short {
+  display: none;
+  opacity: 0.85;
+}
+.planbadge__mode {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.18);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+@media (max-width: 640px) {
+  .planbadge__detail,
+  .planbadge__mode {
+    display: none;
+  }
+  .planbadge__short {
+    display: inline;
+  }
+  .planbadge {
+    padding: 4px 10px;
+  }
+}
+
+.plan {
+  max-width: 880px;
+}
+.plan__mode {
+  margin-top: 18px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+  background: #fff8ec;
+}
+.plan__mode--test {
+  background: #eef4f2;
+}
+.plan__msg {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #eef4f2;
+  color: var(--ink);
+}
+.plan__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.plan__label {
+  font-size: var(--step--1);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.plan__days {
+  display: grid;
+  justify-items: end;
+  text-align: right;
+}
+.plan__days strong {
+  font-family: var(--serif);
+  font-size: var(--step-3);
+  line-height: 1;
+}
+.plan__days span {
+  font-size: var(--step--1);
+  color: var(--muted);
+}
+.plan__meters {
+  display: grid;
+  gap: 14px;
+  margin-top: 6px;
+}
+.meter {
+  display: grid;
+  gap: 6px;
+}
+.meter__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--step--1);
+}
+.meter__bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--fog);
+  overflow: hidden;
+}
+.meter__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sea);
+  transition: width 0.4s ease;
+}
+.meter__bar--full span {
+  background: var(--error);
+}
+.meter__bar--time span {
+  background: var(--glow);
+}
+.plan__actions {
+  margin-top: 4px;
+}
+.plan__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin-top: 24px;
+}
+.plan__card {
+  padding: clamp(18px, 3vw, 26px);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.plan__card--pro {
+  border-color: var(--dusk);
+  background: var(--dusk);
+  color: var(--paper);
+}
+.plan__card--pro .fine {
+  color: rgba(248, 249, 247, 0.75);
+}
+.plan__card h2 {
+  font-size: var(--step-1);
+}
+.plan__price {
+  font-family: var(--serif);
+  font-size: var(--step-2);
+  line-height: 1;
+}
+.plan__price span {
+  font-family: var(--sans);
+  font-size: var(--step--1);
+  opacity: 0.75;
+}
+.plan__card ul {
+  margin: 0;
+  padding-left: 1.1em;
+  display: grid;
+  gap: 6px;
+}
+.plan__buy {
+  display: grid;
+  gap: 10px;
+}
+.plan__card--pro .btn--quiet {
+  color: var(--paper);
+  border-color: rgba(248, 249, 247, 0.5);
+}
+.plan__legal {
+  margin-top: 22px;
+}
