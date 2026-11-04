@@ -12,7 +12,7 @@ function devApi() {
         if (!m) return next()
         try {
           // Endpoints grouped into one Vercel function live in api/_routes/.
-          const mod = await server.ssrLoadModule(`/api/${m[1]}.js`).catch(() => server.ssrLoadModule(`/api/_routes/${m[1]}.js`))
+          const mod = await server.ssrLoadModule(`/api/_routes/${m[1]}.js`).catch(() => server.ssrLoadModule(`/api/${m[1]}.js`))
           await mod.default(req, res)
         } catch (e) {
           if (/Failed to load url|Cannot find module/.test(String(e?.message))) {
