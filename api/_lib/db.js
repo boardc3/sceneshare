@@ -164,11 +164,29 @@ async function migrate(s) {
   )`
 }
 
+// Bump when migrate() changes. A cold start then costs one query, not forty.
+const SCHEMA_VERSION = 1
+
+async function upToDate(s) {
+  try {
+    const rows = await s`select value from schema_meta where key = 'version'`
+    return Number(rows[0]?.value) === SCHEMA_VERSION
+  } catch {
+    return false // table not created yet
+  }
+}
+
 async function ensure() {
   const s = db()
   if (!s) return null
   if (!ready) {
-    ready = migrate(s).catch((e) => {
+    ready = (async () => {
+      if (await upToDate(s)) return
+      await migrate(s)
+      await s`create table if not exists schema_meta (key text primary key, value text not null)`
+      await s`insert into schema_meta (key, value) values ('version', ${String(SCHEMA_VERSION)})
+        on conflict (key) do update set value = excluded.value`
+    })().catch((e) => {
       ready = null
       throw e
     })
