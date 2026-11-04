@@ -119,6 +119,13 @@ SLUG=sceneshare
 DIR=~/Sceneshare/repo
 ```
 
+Once, on a Mac whose `~/Sceneshare/repo` was copied in rather than cloned — connects the folder
+to GitHub without touching any file:
+
+```bash
+cd ~/Sceneshare/repo && git init -b main && git remote add origin https://github.com/boardc3/sceneshare.git && git fetch origin && git reset origin/main && git branch -u origin/main && git status
+```
+
 Every time, first time included:
 
 ```bash
