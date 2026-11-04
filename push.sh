@@ -17,7 +17,7 @@ export CI=1                          # non-interactive CLIs
 SLUG=sceneshare                        # GitHub repo + Vercel project name -> github.com/boardc3/$SLUG
 DIR="$HOME/Sceneshare/repo"                        # folder holding the ROOT vercel.json
 GH_USER=boardc3
-URL="https://$SLUG.vercel.app"
+URL="https://sceneshare-three.vercel.app"   # sceneshare.vercel.app belongs to another Vercel account; this is the project's production domain
 MSG="${1:-update}"
 
 say()  { printf '· %s\n' "$*"; }

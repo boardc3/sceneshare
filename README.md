@@ -8,32 +8,30 @@ Simplified Chinese throughout. Owners can also take or upload their own photos.
 
 React (Vite) front end + Vercel Node functions in `api/`. No videos, by design.
 
-## Status — 2026-11-04
+## Status — 2026-11-04 (live)
 
-**Done**
-- Landing page (live Mapbox satellite hero that flies down to the address, aligned before/after demo,
-  how it works, bilingual + location sections), studio, buyer share page, EN / 中文 toggle.
-- Address → geocode, Orange County assessor parcel (real geometry, reconciled to the listed lot
-  size), nearby places — geocoding, suggestions and places all on Mapbox.
-- Zillow (autocomplete → zpid → `__NEXT_DATA__` gdpClientCache) and Redfin (Google via
-  ScraperAPI → property page → only this home's own photos) listing photos, copied into Blob.
-- Render API: redesign (8 directions from boardc3/sceneit), relight + photo finish only, and
-  feedback edits; Template G structure/view locks; automatic overlay check with one refire.
-- Email capture on every submission (address search, photo upload, render, change request) →
-  Neon `leads` + `submissions`. Sign-in / create-account placeholders (UI, `api/auth.js`, `users`
-  table) — not wired.
-- Camera capture and uploads (shrunk in the browser to 2048 px), PWA manifest.
+**Live at https://sceneshare-three.vercel.app** (Vercel project `sceneshare`, team
+chris-ccolbertcoms-projects; every push to `main` deploys). Vercel Authentication protects
+preview deployments only, so production and share links are public.
+
+Verified on production, 2026-11-04:
+- Mapbox address suggestions, geocoding, nearby places; satellite hero and property map.
+- Orange County assessor parcel (APN, area, outline) reconciled to the listed lot size.
+- Zillow via ScraperAPI: 24 listing photos for a home on the market pulled in ~20 s, stored in
+  Neon, facts read. Off-market homes return facts and no photos; Redfin is found through Google
+  and is often absent.
+- Nano Banana Flash: restyle ~34 s (with one automatic refire), change request ~17 s,
+  twilight relight ~17 s, all stored and served from Neon.
+- Neon: leads, submissions, properties, photos, renders, share views and images all written;
+  owner-only snapshot lock returns 403 to anyone else.
 
 **Owed**
-- Live test of Gemini, Maps and the share flow once the keys are in Vercel (the build session
-  had no Google key; rendering was tested end to end against a mocked model response).
-- Live test of Mapbox with a real token: geocoding and nearby-place parsing were tested against
-  sample Mapbox v6 / Search Box responses, and the maps were checked only in their no-token state.
-- ScraperAPI was reachable from the build workspace at first, then refused by its egress policy,
-  so Zillow/Redfin parsing was verified against real pages fetched earlier, not live. Check one
-  listed address on the deployed site.
 - Parcel outlines for counties beyond Orange County (`api/_lib/parcel.js`, `PROVIDERS`).
-- Accounts (see "Sign-ups" below).
+- Accounts (placeholders only; the Neon integration also provisioned Neon Auth, which is the
+  natural provider when sign-ups are built).
+- Vercel Blob before heavy use (images currently live in Neon).
+- QA rows from the launch check use the email `qa-test@sceneshare.invalid`; remove them with
+  the SQL in "What gets saved" if you want a clean slate.
 
 ## Environment (Vercel → Project → Settings → Environment Variables)
 
@@ -68,7 +66,20 @@ Tables create and upgrade themselves on first use (`api/_lib/db.js`) — no migr
 | `images` | image | the bytes, when Blob is not set up — served at `/api/media?id=…` with a one-year cache |
 | `users` | — | placeholder for accounts |
 
-Only the email that created a property can overwrite its snapshot. Images in Neon cost about
+Only the email that created a property can overwrite its snapshot.
+
+View it: Vercel → Storage → the Neon database → **Open in Neon** (no separate Neon login), then
+Tables or the SQL Editor. Remove the launch-check rows with:
+
+```sql
+delete from images where property_id in (select id from properties where owner_email = 'qa-test@sceneshare.invalid');
+delete from photos where email = 'qa-test@sceneshare.invalid';
+delete from renders where email = 'qa-test@sceneshare.invalid';
+delete from share_views where property_id in (select id from properties where owner_email = 'qa-test@sceneshare.invalid');
+delete from properties where owner_email = 'qa-test@sceneshare.invalid';
+delete from submissions where email = 'qa-test@sceneshare.invalid';
+delete from leads where email = 'qa-test@sceneshare.invalid';
+``` Images in Neon cost about
 0.3–0.5 MB each (listing photos are kept at 1600 px), so a fully restyled home is roughly
 5–10 MB; add Vercel Blob before heavy use and new images move there automatically.
 
@@ -154,6 +165,5 @@ cd ~/Sceneshare/repo && bash push.sh "what changed"
 `push.sh` (kit v2) commits, creates github.com/boardc3/sceneshare on the first run (`gh repo
 create`, private) and pushes, creates and links the Vercel project `sceneshare`, verifies the Git
 connection through the Vercel API, waits for a READY production deployment of this commit (or
-deploys the folder directly), and prints `LIVE:` only when https://sceneshare.vercel.app answers
-200. Add the environment variables above in Vercel before the first real use, then redeploy once
+deploys the folder directly), and prints `LIVE:` only when the production URL answers 200. Add the environment variables above in Vercel before the first real use, then redeploy once
 (Vercel → Deployments → Redeploy) so the functions see them.
