@@ -40,7 +40,7 @@ export default function HouseProgress({ run, photos, onStop, onRetry, onClose })
           {running
             ? `${t('run.progress', { done, total })} · ${left ? t('run.eta', { min: Math.max(1, Math.round(eta / 60)) }) : t('run.finishing')} · ${t('run.elapsed', { s: Math.round(elapsed) })}`
             : run.status === 'done'
-              ? t('run.done', { total })
+              ? t(total === 1 ? 'run.done1' : 'run.done', { total })
               : run.status === 'fatal'
                 ? run.fatal
                 : t('run.partial', { done, missing: total - done })}

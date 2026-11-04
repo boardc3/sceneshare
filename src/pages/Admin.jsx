@@ -165,7 +165,7 @@ export default function Admin() {
 
       <section>
         <h2>Designs</h2>
-        <Table rows={o.designs} cols={[['Started', (r) => when(r.created_at)], ['Home', (r) => <Link to={`/p/${r.property_id}`}>{r.property_id}</Link>], ['Kind', (r) => (r.mode === 'polish' ? 'Relight' : r.style)], ['Light', (r) => r.light], ['Status', (r) => r.status], ['Done', (r) => `${r.done}/${r.photos}`]]} />
+        <Table rows={o.designs} cols={[['Started', (r) => when(r.created_at)], ['Home', (r) => <Link to={`/p/${r.property_id}`}>{r.property_id}</Link>], ['Kind', (r) => (r.mode === 'polish' ? 'Relight' : r.mode === 'cleanup' ? 'Clean up' : r.style)], ['Light', (r) => r.light], ['Status', (r) => r.status], ['Done', (r) => `${r.done}/${r.photos}`]]} />
       </section>
 
       <div className="admin__cols">

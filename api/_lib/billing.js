@@ -68,9 +68,9 @@ export async function assertCanAddHome(user) {
   return b
 }
 
-export async function assertCanAddDesign(user, propertyId) {
+export async function assertCanAddDesign(user, propertyId, { photoOnly = false } = {}) {
   const b = await billingFor(user, propertyId)
-  if (b.limits.designsPerHome != null && b.usage.designs >= b.limits.designsPerHome) throw limitError('designs', b.limits.designsPerHome, b)
+  if (!photoOnly && b.limits.designsPerHome != null && b.usage.designs >= b.limits.designsPerHome) throw limitError('designs', b.limits.designsPerHome, b)
   if (b.limits.runs30d != null && b.usage.runs30d >= b.limits.runs30d) throw limitError('runs', b.limits.runs30d, b)
   return b
 }

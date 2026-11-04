@@ -6,7 +6,9 @@ import { versionFor } from '../../shared/model.js'
 export function designName(d, t) {
   if (!d) return ''
   const light = t(`light.${d.light || 'daylight'}`)
-  return d.mode === 'polish' ? `${t('design.relit')} · ${light}` : `${t(`style.${d.style || 'signature'}`)} · ${light}`
+  if (d.mode === 'polish') return `${t('design.relit')} · ${light}`
+  if (d.mode === 'cleanup') return `${t('design.cleaned')} · ${light}`
+  return `${t(`style.${d.style || 'signature'}`)} · ${light}`
 }
 
 export function designLabel(d, i, t) {

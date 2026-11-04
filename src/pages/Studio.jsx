@@ -4,6 +4,7 @@ import AddressSearch from '../components/AddressSearch.jsx'
 import Compare from '../components/Compare.jsx'
 import Facts from '../components/Facts.jsx'
 import HouseProgress from '../components/HouseProgress.jsx'
+import PhotoRestyle from '../components/PhotoRestyle.jsx'
 import PropertyMap from '../components/PropertyMap.jsx'
 import ShareBar from '../components/ShareBar.jsx'
 import ShareStats from '../components/ShareStats.jsx'
@@ -57,6 +58,8 @@ export default function Studio({ id }) {
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState('')
   const [shared, setShared] = useState(0)
+  const [prPhotos, setPrPhotos] = useState(null) // the clean-up / restyle pop-up, for these photos
+  const [prBusy, setPrBusy] = useState(false)
 
   useEffect(() => {
     health().then((h) => setFeatures(h.features || {}))
@@ -165,6 +168,29 @@ export default function Studio({ id }) {
     go(d, ids, { label: run.label, retry: true })
   }
 
+  // Clean up / restyle / relight only the chosen photos, as their own design.
+  const restylePhotos = async ({ mode: m, style: s, light: l, note: n }) => {
+    const ids = (prPhotos || []).map((p) => p.id)
+    if (!ids.length) return
+    setPrBusy(true)
+    setError('')
+    try {
+      const d = await withRetry(() => post('/api/properties', { op: 'design.create', propertyId: id, photoIds: ids, mode: m, style: s, light: l, note: n, lang }))
+      const next = normalizeProperty(d.property)
+      setProperty(next)
+      setSides({ left: 'original', right: d.design.id })
+      setSelected(ids[0])
+      setPrPhotos(null)
+      track('photo_restyle_start', { mode: m, style: s, light: l, photos: ids.length }, { propertyId: id })
+      go(d.design, ids, { label: designLabel(d.design, next.designs.length - 1, t) })
+    } catch (e) {
+      setError(e.message || t('err.generic'))
+      if (e.code === 'plan_limit') setPrPhotos(null)
+    } finally {
+      setPrBusy(false)
+    }
+  }
+
   const op = async (body, event) => {
     setError('')
     try {
@@ -211,18 +237,25 @@ export default function Studio({ id }) {
     if (!files?.length) return
     setUploading(true)
     setError('')
+    const added = []
     try {
       for (const f of files) {
         const image = await shrinkPhoto(f)
         const d = await withRetry(() => post('/api/upload', { image, propertyId: id, lang }))
         setProperty((p) => ({ ...p, photos: [...p.photos, d.photo] }))
         setSelected(d.photo.id)
+        added.push(d.photo)
         track('photo_upload', null, { propertyId: id })
       }
     } catch (e) {
       setError(e.message || t('err.generic'))
     } finally {
       setUploading(false)
+      // Offer to clean up or restyle just the new photos.
+      if (added.length && features.render !== false && run?.status !== 'running') {
+        setPrPhotos(added)
+        track('photo_restyle_offer', { photos: added.length }, { propertyId: id })
+      }
     }
   }
 
@@ -344,7 +377,7 @@ export default function Studio({ id }) {
                         {property.featured === d.id && <span className="dchip__star" title={t('design.featured')}>★</span>}
                       </span>
                       <span className="dchip__name">{designName(d, t)}</span>
-                      <span className="dchip__meta">{isRunning ? t('design.running') : have < visible.length ? t('design.partial', { have, total: visible.length }) : t('design.photos', { n: have })}</span>
+                      <span className="dchip__meta">{isRunning ? t('design.running') : d.scope && have <= d.scope.length && have < visible.length ? t(have === 1 ? 'design.scoped1' : 'design.scoped', { n: have }) : have < visible.length ? t('design.partial', { have, total: visible.length }) : t(have === 1 ? 'design.scoped1' : 'design.photos', { n: have })}</span>
                     </span>
                   </button>
                 </li>
@@ -363,7 +396,7 @@ export default function Studio({ id }) {
             )}
             {missing.length > 0 && !(run?.status === 'running') && (
               <button type="button" className="btn btn--quiet btn--small" onClick={() => finishDesign(right)} disabled={!canRender}>
-                {t('design.finish', { n: missing.length })}
+                {right.scope ? t('design.extend', { n: missing.length }) : t('design.finish', { n: missing.length })}
               </button>
             )}
             <button type="button" className="btn btn--quiet btn--small btn--danger" onClick={() => deleteDesign(right)} disabled={run?.status === 'running'}>
@@ -448,6 +481,9 @@ export default function Studio({ id }) {
 
               {!right && (
                 <div className="phototools__row phototools__row--solo">
+                  <button type="button" className="btn btn--ink btn--small" onClick={() => setPrPhotos([photo])} disabled={!canRender || photo.hidden || run?.status === 'running'}>
+                    {t('pr.open')}
+                  </button>
                   <button type="button" className="btn btn--quiet btn--small" onClick={() => op({ op: 'photo.hide', photoId: photo.id, hidden: !photo.hidden }, photo.hidden ? 'photo_show' : 'photo_hide')}>
                     {photo.hidden ? t('studio.unhide') : t('studio.hide')}
                   </button>
@@ -481,6 +517,9 @@ export default function Studio({ id }) {
                     </form>
                   )}
                   <div className="phototools__row">
+                    <button type="button" className="btn btn--quiet btn--small" onClick={() => setPrPhotos([photo])} disabled={!canRender || photo.hidden || run?.status === 'running'}>
+                      {t('pr.open')}
+                    </button>
                     <button type="button" className="btn btn--quiet btn--small" onClick={() => photoAction(photo, 'redo')} disabled={!!photoBusy || !canRender || photo.hidden}>
                       {rightImg ? t('studio.redo') : t('studio.addToDesign')}
                     </button>
@@ -589,6 +628,7 @@ export default function Studio({ id }) {
       )}
 
       {run && <HouseProgress run={run} photos={photos} onStop={stop} onRetry={retryRun} onClose={close} />}
+      {prPhotos && <PhotoRestyle photos={prPhotos} styles={STYLES} lights={LIGHTS} busy={prBusy} onStart={restylePhotos} onClose={() => (setPrPhotos(null), track('photo_restyle_dismiss', null, { propertyId: id }))} />}
     </main>
   )
 }

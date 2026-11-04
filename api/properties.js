@@ -52,7 +52,8 @@ async function write(req, res) {
   const id = row.id
   res._meta = { propertyId: id, op }
   const lang = body.lang === 'zh' ? 'zh' : 'en'
-  if (op === 'design.create') await assertCanAddDesign(user, id)
+  // Single-photo edits don't use up a Free plan's whole-house designs (they still count toward fair use).
+  if (op === 'design.create') await assertCanAddDesign(user, id, { photoOnly: Array.isArray(body.photoIds) })
 
   if (op === 'property.delete') {
     await deleteProperty(id)
@@ -65,7 +66,10 @@ async function write(req, res) {
     const d = p.designs.find((x) => x.id === body.designId)
     switch (op) {
       case 'design.create': {
-        const mode = body.mode === 'polish' ? 'polish' : 'redesign'
+        const mode = ['polish', 'cleanup'].includes(body.mode) ? body.mode : 'redesign'
+        // A design can cover chosen photos only (e.g. "clean up the photo I just uploaded").
+        const scope = Array.isArray(body.photoIds) ? [...new Set(body.photoIds.map(String))].filter((x) => p.photos.some((ph) => ph.id === x)).slice(0, 60) : null
+        if (Array.isArray(body.photoIds) && !scope.length) throw new ApiError(404, 'photo_missing', 'That photo is no longer part of this home.')
         design = {
           id: newId(8),
           mode,
@@ -74,7 +78,8 @@ async function write(req, res) {
           note: String(body.note || '').trim().slice(0, 400),
           createdAt: new Date().toISOString(),
           status: 'running',
-          total: p.photos.filter((ph) => !ph.hidden).length,
+          total: scope ? scope.length : p.photos.filter((ph) => !ph.hidden).length,
+          ...(scope ? { scope } : {}),
           picks: {},
           failed: [],
         }

@@ -80,6 +80,12 @@ const POLISH = `TASK — POLISH ONLY (RELIGHT + PHOTO FINISH)
 Keep EVERYTHING in the photograph as it is: the same furniture, the same finishes, the same objects in the same places, the same colours of every material. Do not restyle, re-furnish or redecorate.
 Only: correct exposure and white balance, relight as specified below, tidy obvious clutter (loose cables, small mess), straighten nothing that would move the camera, and give it a professional editorial photo finish.`
 
+const CLEANUP = `TASK — CLEAN UP FOR A LISTING PHOTOGRAPH (DECLUTTER + RELIGHT + PHOTO FINISH)
+Keep the room and its furniture: the same sofa, beds, tables, cabinets, built-ins, rugs and large pieces, in the same places, with the same materials and colours. Do not restyle, re-furnish or redecorate.
+Remove what a professional stager would clear before a listing shoot: clutter on counters, tables, floors and shelves; personal items and photographs; toys, laundry, shoes, bags, boxes, bins, cords and cables; papers, magnets and notes; toiletries and cleaning products; pet bowls and beds. Fill each cleared area with the surface that was naturally behind it.
+Tidy what stays: straighten cushions, throws and rugs, make beds neatly, close cabinet doors and drawers, align chairs. Clean surfaces of marks and smudges; repair small scuffs on walls and floors.
+Then correct exposure and white balance, relight as specified below, and give it a professional editorial photo finish.`
+
 // Prefixed to a second attempt when the automatic overlay check fails.
 export const RETRY_PREFIX = `SECOND ATTEMPT. The previous attempt changed the camera (it zoomed, re-centred or moved walls and openings). That is a failure. This time keep the frame EXACTLY: every wall edge, the ceiling line, the floor line and every window and door must sit on the same pixels as in the attached photograph. Change surfaces, furniture and light only.
 
@@ -88,6 +94,9 @@ export const RETRY_PREFIX = `SECOND ATTEMPT. The previous attempt changed the ca
 export function buildRenderPrompt({ mode = 'redesign', style = 'signature', light = 'daylight', note = '' }) {
   const lightBlock = LIGHT[light] || LIGHT.daylight
   const extra = note ? `\nADDITIONAL DIRECTION FROM THE OWNER (apply within every lock above): ${note.slice(0, 600)}\n` : ''
+  if (mode === 'cleanup') {
+    return [SHOT, LOCKS, CLEANUP, lightBlock, FINISH, extra, NEGATIVES, 'REMINDER: STRUCTURE, OPENINGS, CAMERA, VIEW AND THE MAIN FURNITURE ARE EXACT. ONLY CLUTTER, LIGHT AND FINISH CHANGE.'].join('\n\n')
+  }
   if (mode === 'polish') {
     return [SHOT, LOCKS, POLISH, lightBlock, FINISH, extra, NEGATIVES, 'REMINDER: STRUCTURE, OPENINGS, CAMERA AND VIEW ARE EXACT.'].join('\n\n')
   }

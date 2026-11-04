@@ -5,7 +5,7 @@
 // photo    = { id, src, width, height, source, credit, caption, hidden, versions: [version] }
 // version  = { id, designId, src, width, height, mode, style, light, feedback,
 //              baseVersionId, model, align, attempts, ms, at }
-// design   = { id, mode: 'redesign' | 'polish', style, light, note, createdAt,
+// design   = { id, mode: 'redesign' | 'polish' | 'cleanup', style, light, note, createdAt, scope?: [photoId],
 //              status: 'running' | 'done' | 'partial', total, picks: { photoId: versionId }, failed: [photoId] }
 //
 // A design is one "Restyle this house" run. Each photo has at most one pick per

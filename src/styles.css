@@ -2787,3 +2787,32 @@ body.is-modal {
 .plan__legal {
   margin-top: 22px;
 }
+
+/* ---------------------------------------------------------------- photo clean-up / restyle pop-up */
+.pr__thumbs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 6px;
+}
+.pr__thumbs img {
+  width: 120px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.pr__thumbs img:only-child {
+  width: 100%;
+  height: auto;
+  max-height: 260px;
+}
+.pr__more {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 8px;
+  background: var(--fog);
+  font-weight: 700;
+}

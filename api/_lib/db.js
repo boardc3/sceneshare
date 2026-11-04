@@ -857,7 +857,9 @@ export async function usageFor(userId, propertyId = null) {
   const [r] = await s`select count(*)::int as n from designs where user_id = ${userId} and created_at > ${since}`
   const out = { homes: h?.n || 0, runs30d: r?.n || 0 }
   if (propertyId) {
-    const [d] = await s`select jsonb_array_length(coalesce(data->'designs', '[]'::jsonb))::int as n from properties where id = ${propertyId}`
+    // Whole-house designs only; single-photo edits carry a scope.
+    const [d] = await s`select count(*)::int as n from properties, jsonb_array_elements(coalesce(data->'designs', '[]'::jsonb)) as dz
+      where id = ${propertyId} and dz->'scope' is null`
     const [e] = await s`select coalesce(sum(recipient_count), 0)::int as n from shares where property_id = ${propertyId} and by_owner and channel = 'email'`
     out.designs = d?.n || 0
     out.emails = e?.n || 0
