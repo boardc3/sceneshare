@@ -14,8 +14,8 @@ const rid = () => Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => 
 // Email opens a short form; text, copy and the phone's share sheet work instantly.
 export default function ShareBar({ id, address, owner = false, disabled = false, onShared }) {
   const { t, lang } = useI18n()
-  const { user } = useAuth()
-  const [linkLang, setLinkLang] = useState(lang)
+  const { user, prefs } = useAuth()
+  const [linkLang, setLinkLang] = useState(owner && prefs?.linkLang ? prefs.linkLang : lang)
   const [copied, setCopied] = useState(false)
   const [emailOpen, setEmailOpen] = useState(false)
   const L = owner ? linkLang : lang

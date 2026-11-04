@@ -3,6 +3,7 @@ import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { resetPassword } from '../lib/auth.js'
 import { Link } from '../router.jsx'
+import PasswordInput from '../components/PasswordInput.jsx'
 
 // The link in a password-reset email lands here with ?token=…
 export default function Reset() {
@@ -49,11 +50,11 @@ export default function Reset() {
         <form onSubmit={submit} noValidate className="auth">
           <label className="field">
             <span>{t('reset.new')}</span>
-            <input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} minLength={8} required />
+            <PasswordInput autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required />
           </label>
           <label className="field">
             <span>{t('reset.again')}</span>
-            <input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} minLength={8} required />
+            <PasswordInput autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required />
           </label>
           {error && (
             <p className="field__error" role="alert">

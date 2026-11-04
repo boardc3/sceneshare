@@ -1,4 +1,4 @@
-import { addDesign, normalizeProperty, publicView, removeDesign, setDesign, setHidden, pickVersion } from '../shared/model.js'
+import { addDesign, normalizeProperty, publicView, removeDesign, removePhoto, setDesign, setHidden, pickVersion } from '../shared/model.js'
 import { sessionUser } from './_lib/auth.js'
 import { config } from './_lib/config.js'
 import { deleteProperty, listProperties, logSubmission, mutateProperty, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
@@ -41,7 +41,7 @@ async function read(req, res) {
   send(res, 200, { ok: true, owner, property: owner && q.full === '1' ? p : publicView(p) })
 }
 
-const OPS = ['design.create', 'design.finish', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'property.delete']
+const OPS = ['design.create', 'design.finish', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'photo.delete', 'property.rename', 'property.delete']
 
 async function write(req, res) {
   const body = await readJson(req)
@@ -98,6 +98,12 @@ async function write(req, res) {
         if (!d || !v || v.designId !== d.id) throw new ApiError(400, 'bad_version', 'That version belongs to another design.')
         return pickVersion(p, d.id, ph.id, v.id)
       }
+      case 'photo.delete': {
+        if (!p.photos.some((x) => x.id === body.photoId)) return false
+        return removePhoto(p, body.photoId)
+      }
+      case 'property.rename':
+        return { ...p, nickname: String(body.name || '').trim().slice(0, 80) || null }
       case 'photo.hide': {
         if (!p.photos.some((x) => x.id === body.photoId)) throw new ApiError(404, 'photo_missing', 'That photo is no longer part of this home.')
         return setHidden(p, body.photoId, !!body.hidden)

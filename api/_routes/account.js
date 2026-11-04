@@ -1,5 +1,5 @@
 import { authCall, authEnabled, sessionUser } from '../_lib/auth.js'
-import { addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, touchUser } from '../_lib/db.js'
+import { addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, setPrefs, touchUser } from '../_lib/db.js'
 import { isAdmin, newId, requireUser } from '../_lib/gate.js'
 import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 
@@ -23,12 +23,18 @@ export default route(
       }
       const user = authEnabled() ? await sessionUser(req, res) : null
       if (!user) return send(res, 200, { ok: true, accounts: authEnabled(), user: null })
-      const { claimed } = await touchUser(user)
+      const { claimed, prefs } = await touchUser(user)
       res._meta = claimed ? { claimed } : null
-      return send(res, 200, { ok: true, accounts: true, user, admin: isAdmin(user), claimed })
+      return send(res, 200, { ok: true, accounts: true, user, admin: isAdmin(user), claimed, prefs })
     }
 
     const body = await readJson(req)
+    if (body.op === 'prefs') {
+      const u = await requireUser(req, res)
+      const prefs = await setPrefs(u.id, body.prefs)
+      res._meta = { prefs }
+      return send(res, 200, { ok: true, prefs })
+    }
     if (body.op !== 'delete') throw new ApiError(400, 'bad_op', 'Unknown request.')
     const user = await requireUser(req, res)
     if (body.confirm !== 'DELETE') throw new ApiError(400, 'confirm_required', 'Type DELETE to confirm.')

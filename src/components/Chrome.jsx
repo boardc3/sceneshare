@@ -5,6 +5,7 @@ import { currentUser, onAuthRequest, requestReset, signInEmail, signInGoogle, si
 import { post } from '../lib/api.js'
 import { isEmail } from '../lib/format.js'
 import { Link, useRouter } from '../router.jsx'
+import PasswordInput from './PasswordInput.jsx'
 
 export function Nav({ tone = 'light' }) {
   const { t, lang, setLang } = useI18n()
@@ -51,6 +52,9 @@ export function Nav({ tone = 'light' }) {
                 <p className="acct__who">{user.email}</p>
                 <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/account'))}>
                   {t('nav.homes')}
+                </button>
+                <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/settings'))}>
+                  {t('nav.settings')}
                 </button>
                 {admin && (
                   <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/admin'))}>
@@ -260,15 +264,7 @@ export function AuthModal() {
           {mode !== 'forgot' && (
             <label className="field">
               <span>{t('auth.password')}</span>
-              <input
-                type="password"
-                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
-                required
-                aria-describedby="pw-hint"
-              />
+              <PasswordInput autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} required aria-describedby="pw-hint" />
               {mode === 'signup' && (
                 <small id="pw-hint" className="fine">
                   {t('auth.pwHint')}

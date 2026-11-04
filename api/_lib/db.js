@@ -211,6 +211,7 @@ async function migrate(s) {
   )`
   await s`alter table users add column if not exists last_seen_at timestamptz`
   await s`alter table users add column if not exists email_verified boolean`
+  await s`alter table users add column if not exists prefs jsonb`
   await s`alter table users drop constraint if exists users_email_key`
 
   await s`create table if not exists events (
@@ -286,7 +287,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 async function upToDate(s) {
   try {
@@ -389,15 +390,25 @@ export async function touchUser(user) {
         email_verified = excluded.email_verified, last_seen_at = now()`
     await s`insert into leads (email, user_id, source, submissions) values (${user.email}, ${user.id}, 'account', 0)
       on conflict (email) do update set user_id = excluded.user_id, last_seen = now()`
+    const [row] = await s`select prefs from users where id = ${user.id}`
     let claimed = 0
     if (user.emailVerified && user.email) {
       const rows = await s`update properties set owner_user_id = ${user.id}, updated_at = now()
         where owner_user_id is null and lower(owner_email) = ${user.email} returning id`
       claimed = rows.length
     }
-    return { claimed }
+    return { claimed, prefs: row?.prefs || {} }
   })
-  return r || { claimed: 0 }
+  return r || { claimed: 0, prefs: {} }
+}
+
+const PREF_KEYS = { lang: ['en', 'zh'], linkLang: ['en', 'zh'], productEmails: [true, false], activityEmails: [true, false] }
+export async function setPrefs(userId, patch) {
+  const s = await ensure()
+  if (!s) return {}
+  const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k, v]) => PREF_KEYS[k]?.includes(v)))
+  const rows = await s`update users set prefs = coalesce(prefs, '{}'::jsonb) || ${j(clean)}::jsonb where id = ${userId} returning prefs`
+  return rows[0]?.prefs || {}
 }
 
 // Every owner action (address search, listing lookup, upload, render, change
@@ -491,7 +502,7 @@ export async function listProperties(userId) {
       jsonb_array_length(coalesce(data->'photos', '[]'::jsonb)) as photos,
       jsonb_array_length(coalesce(data->'designs', '[]'::jsonb)) as designs,
       data->'photos'->0->>'src' as cover, data->'address'->>'streetNumber' as street_number, data->'address'->>'route' as route,
-      data->'address'->>'unit' as unit,
+      data->'address'->>'unit' as unit, data->>'nickname' as nickname,
       (select count(*)::int from shares sh where sh.property_id = properties.id) as shares
     from properties where owner_user_id = ${userId} order by updated_at desc limit 200`
   return rows

@@ -293,7 +293,7 @@ export default function Studio({ id }) {
       <header className="studio__head">
         <div>
           <p className="studio__eyebrow">{t('studio.eyebrow')}</p>
-          <h1 className="studio__address">{addressLine || t('studio.ownTitle')}</h1>
+          <h1 className="studio__address">{property.nickname || addressLine || t('studio.ownTitle')}</h1>
           {property.address && (
             <p className="studio__place">
               {property.address.city}, {property.address.state} {property.address.zip}
@@ -446,6 +446,18 @@ export default function Studio({ id }) {
                 {!designs.length && <span className="viewer__hint"> — {t('studio.noVersion')}</span>}
               </p>
 
+              {!right && (
+                <div className="phototools__row phototools__row--solo">
+                  <button type="button" className="btn btn--quiet btn--small" onClick={() => op({ op: 'photo.hide', photoId: photo.id, hidden: !photo.hidden }, photo.hidden ? 'photo_show' : 'photo_hide')}>
+                    {photo.hidden ? t('studio.unhide') : t('studio.hide')}
+                  </button>
+                  {photo.source === 'owner' && (
+                    <button type="button" className="btn btn--quiet btn--small btn--danger" onClick={() => window.confirm(t('studio.removeConfirm')) && op({ op: 'photo.delete', photoId: photo.id }, 'photo_delete')}>
+                      {t('studio.remove')}
+                    </button>
+                  )}
+                </div>
+              )}
               {right && (
                 <div className="phototools">
                   {rightImg && (
@@ -480,6 +492,15 @@ export default function Studio({ id }) {
                     <button type="button" className="btn btn--quiet btn--small" onClick={() => op({ op: 'photo.hide', photoId: photo.id, hidden: !photo.hidden }, photo.hidden ? 'photo_show' : 'photo_hide')}>
                       {photo.hidden ? t('studio.unhide') : t('studio.hide')}
                     </button>
+                    {photo.source === 'owner' && (
+                      <button
+                        type="button"
+                        className="btn btn--quiet btn--small btn--danger"
+                        onClick={() => window.confirm(t('studio.removeConfirm')) && op({ op: 'photo.delete', photoId: photo.id }, 'photo_delete')}
+                      >
+                        {t('studio.remove')}
+                      </button>
+                    )}
                   </div>
                   {history.length > 1 && (
                     <div className="versions">

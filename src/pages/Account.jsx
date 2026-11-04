@@ -3,6 +3,7 @@ import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { get, post } from '../lib/api.js'
 import { refresh, requireSignIn, sendVerifyCode, signOut, useAuth, verifyEmail } from '../lib/auth.js'
+import ShareBar from '../components/ShareBar.jsx'
 import ShareStats from '../components/ShareStats.jsx'
 import { Link, useRouter } from '../router.jsx'
 
@@ -61,6 +62,18 @@ export default function Account() {
       await post('/api/properties', { op: 'property.delete', propertyId: h.id, lang })
       track('property_delete', null, { propertyId: h.id })
       setHomes((list) => list.filter((x) => x.id !== h.id))
+    } catch (e) {
+      setError(e.message || t('err.generic'))
+    }
+  }
+
+  const renameHome = async (h) => {
+    const name = window.prompt(t('account.renamePrompt'), h.nickname || '')
+    if (name === null) return
+    try {
+      await post('/api/properties', { op: 'property.rename', propertyId: h.id, name, lang })
+      setHomes((list) => list.map((x) => (x.id === h.id ? { ...x, nickname: name.trim() || null } : x)))
+      track('property_rename', null, { propertyId: h.id })
     } catch (e) {
       setError(e.message || t('err.generic'))
     }
@@ -148,14 +161,19 @@ export default function Account() {
               </Link>
               <div className="home__body">
                 <h2 className="home__addr">
-                  <Link to={`/studio/${h.id}`}>{h.street_number ? `${h.street_number} ${h.route}${h.unit ? ` #${h.unit}` : ''}` : t('studio.ownTitle')}</Link>
+                  <Link to={`/studio/${h.id}`}>{h.nickname || (h.street_number ? `${h.street_number} ${h.route}${h.unit ? ` #${h.unit}` : ''}` : t('studio.ownTitle'))}</Link>
+                  <button type="button" className="linkish home__rename" onClick={() => renameHome(h)}>
+                    {t('account.rename')}
+                  </button>
                 </h2>
+                {h.nickname && h.street_number && <p className="home__place">{`${h.street_number} ${h.route}`}</p>}
                 {h.city && (
                   <p className="home__place">
                     {h.city}, {h.state} {h.zip}
                   </p>
                 )}
                 <p className="home__stats">{t('account.stats', { photos: h.photos, designs: h.designs, shares: h.shares || 0, views: h.share_views || 0 })}</p>
+                {h.formatted_address && <ShareBar id={h.id} address={h.formatted_address} owner />}
                 {h.formatted_address && <ShareStats id={h.id} />}
                 <div className="home__actions">
                   <Link to={`/studio/${h.id}`} className="btn btn--ink btn--small">
@@ -176,67 +194,9 @@ export default function Account() {
         </ul>
       )}
 
-      <section className="account__me" aria-labelledby="me-h">
-        <h2 id="me-h">{t('account.me')}</h2>
-        <dl className="account__dl">
-          <dt>{t('auth.email')}</dt>
-          <dd>
-            {user.email} {user.emailVerified ? <span className="tag tag--ok">{t('account.isVerified')}</span> : <span className="tag">{t('account.notVerified')}</span>}
-          </dd>
-          {user.name && (
-            <>
-              <dt>{t('auth.name')}</dt>
-              <dd>{user.name}</dd>
-            </>
-          )}
-        </dl>
-
-        {!user.emailVerified && (
-          <div className="verify">
-            <p>{t('account.verifyWhy')}</p>
-            {!codeSent ? (
-              <button type="button" className="btn btn--quiet btn--small" onClick={sendCode}>
-                {t('account.sendCode')}
-              </button>
-            ) : (
-              <form className="verify__form" onSubmit={submitCode}>
-                <label className="field">
-                  <span>{t('account.code')}</span>
-                  <input type="text" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} maxLength={10} />
-                </label>
-                <button type="submit" className="btn btn--ink btn--small" disabled={!code.trim()}>
-                  {t('account.verify')}
-                </button>
-              </form>
-            )}
-            {verifyMsg && (
-              <p className="fine" role="status">
-                {verifyMsg}
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="account__data">
-          <h3>{t('account.yourData')}</h3>
-          <p>{t('account.yourDataBody')}</p>
-          <a className="btn btn--quiet btn--small" href="/api/account?export=1" onClick={() => track('data_export')}>
-            {t('account.download')}
-          </a>
-        </div>
-
-        <form className="account__danger" onSubmit={deleteAccount}>
-          <h3>{t('account.deleteTitle')}</h3>
-          <p>{t('account.deleteBody')}</p>
-          <label className="field">
-            <span>{t('account.deleteType')}</span>
-            <input type="text" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" />
-          </label>
-          <button type="submit" className="btn btn--danger btn--small" disabled={confirm !== 'DELETE' || deleting}>
-            {deleting ? t('auth.working') : t('account.deleteGo')}
-          </button>
-        </form>
-      </section>
+      <p className="account__settings">
+        <Link to="/settings">{t('account.toSettings')}</Link>
+      </p>
     </main>
   )
 }

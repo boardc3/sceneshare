@@ -111,6 +111,16 @@ export function removeDesign(p, designId) {
   return next
 }
 
+export function removePhoto(p, photoId) {
+  const photos = p.photos.filter((ph) => ph.id !== photoId)
+  const designs = p.designs.map((d) => {
+    const picks = { ...d.picks }
+    delete picks[photoId]
+    return { ...d, picks, failed: (d.failed || []).filter((x) => x !== photoId) }
+  })
+  return { ...p, photos, designs }
+}
+
 export function setHidden(p, photoId, hidden) {
   return { ...p, photos: p.photos.map((ph) => (ph.id === photoId ? { ...ph, hidden: !!hidden } : ph)) }
 }

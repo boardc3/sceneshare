@@ -2,9 +2,9 @@
 // Auth), so the session is a first-party HttpOnly cookie the page never touches.
 import { useSyncExternalStore } from 'react'
 import { track } from './analytics.js'
-import { get } from './api.js'
+import { get, post, setAuthRecovery } from './api.js'
 
-const state = { ready: false, user: null, admin: false, accounts: true, claimed: 0 }
+const state = { ready: false, user: null, admin: false, accounts: true, claimed: 0, prefs: {} }
 let snapshot = { ...state }
 const subs = new Set()
 function set(patch) {
@@ -36,7 +36,7 @@ export async function refresh() {
   }
   try {
     const d = await get('/api/account')
-    set({ ready: true, user: d.user, admin: !!d.admin, accounts: d.accounts !== false, claimed: d.claimed || 0 })
+    set({ ready: true, user: d.user, admin: !!d.admin, accounts: d.accounts !== false, claimed: d.claimed || 0, prefs: d.prefs || {} })
     if (verifier && d.user) track('sign_in', { method: 'google' })
     if (verifier && !d.user) track('sign_in_failed', { method: 'google' })
   } catch {
@@ -91,6 +91,27 @@ export async function signInGoogle(returnTo = window.location.pathname + window.
   return r.error ? r : { error: { code: 'google_unavailable' } }
 }
 
+// Account preferences (language, share-link language, email choices).
+export async function savePrefs(patch) {
+  if (!state.user) return state.prefs
+  set({ prefs: { ...state.prefs, ...patch } })
+  try {
+    const d = await post('/api/account', { op: 'prefs', prefs: patch })
+    set({ prefs: d.prefs })
+  } catch {
+    /* kept locally; next save retries */
+  }
+  return state.prefs
+}
+
+export const updateName = async (name) => {
+  const r = await call('update-user', { name })
+  if (!r.error) await refresh()
+  return r
+}
+export const changePassword = (currentPassword, newPassword, revokeOtherSessions = true) => call('change-password', { currentPassword, newPassword, revokeOtherSessions })
+export const signOutOthers = () => call('revoke-other-sessions', {})
+
 export async function signOut() {
   await call('sign-out', {})
   track('sign_out')
@@ -138,6 +159,13 @@ export function openAuth({ mode = 'signin', reason = null, intent = null } = {})
   if (!opener) return Promise.resolve(null)
   return new Promise((resolve) => opener({ mode, reason, resolve }))
 }
+
+// When a session ends mid-task, ask to sign in again and carry on.
+setAuthRecovery(async () => {
+  set({ user: null })
+  const user = await openAuth({ mode: 'signin', reason: 'expired' })
+  return Boolean(user)
+})
 
 export async function requireSignIn(reason, intent = null) {
   if (state.user) return state.user

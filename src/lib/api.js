@@ -21,30 +21,33 @@ async function handle(r) {
   return data
 }
 
-export async function get(path) {
-  let r
-  try {
-    r = await fetch(path, { headers: analyticsHeaders(), credentials: 'same-origin' })
-  } catch {
-    throw new ApiError('network', '', 0)
+// Set by auth.js: when the session has ended, sign in again, then retry once.
+let recover = null
+export const setAuthRecovery = (fn) => (recover = fn)
+let recovering = null
+
+async function send(path, init) {
+  const once = async () => {
+    let r
+    try {
+      r = await fetch(path, { credentials: 'same-origin', ...init, headers: { ...(init.headers || {}), ...analyticsHeaders() } })
+    } catch {
+      throw new ApiError('network', '', 0)
+    }
+    return handle(r)
   }
-  return handle(r)
+  try {
+    return await once()
+  } catch (e) {
+    if (e.code !== 'sign_in_required' || !recover || path.startsWith('/api/account')) throw e
+    recovering = recovering || recover().finally(() => (recovering = null))
+    if (!(await recovering)) throw e
+    return once()
+  }
 }
 
-export async function post(path, body) {
-  let r
-  try {
-    r = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...analyticsHeaders() },
-      credentials: 'same-origin',
-      body: JSON.stringify(body),
-    })
-  } catch {
-    throw new ApiError('network', '', 0)
-  }
-  return handle(r)
-}
+export const get = (path) => send(path, {})
+export const post = (path, body) => send(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
 // Errors worth another try: the model was busy or slow, the network blinked.
 export const retriable = (e) => e?.code === 'network' || e?.status === 0 || e?.status === 429 || e?.status === 502 || e?.status === 503 || e?.status === 504 || e?.code === 'render_failed' || e?.code === 'render_busy' || e?.code === 'property_busy' || e?.code === 'server_error' || /^http_5/.test(e?.code || '')

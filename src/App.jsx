@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { AuthModal, CookieBanner, Footer, Nav } from './components/Chrome.jsx'
 import { I18n, translate, useI18n } from './i18n.js'
 import { initAnalytics, pageView, reportError } from './lib/analytics.js'
-import { refresh } from './lib/auth.js'
+import { refresh, savePrefs, useAuth } from './lib/auth.js'
 import Landing from './pages/Landing.jsx'
 import Own from './pages/Own.jsx'
 import Share from './pages/Share.jsx'
@@ -15,6 +15,7 @@ const Admin = lazy(() => import('./pages/Admin.jsx'))
 const Legal = lazy(() => import('./pages/Legal.jsx'))
 const PrivacyRequest = lazy(() => import('./pages/PrivacyRequest.jsx'))
 const Reset = lazy(() => import('./pages/Reset.jsx'))
+const Settings = lazy(() => import('./pages/Settings.jsx'))
 
 function initialLang() {
   const q = new URLSearchParams(window.location.search).get('lang')
@@ -104,7 +105,12 @@ const Loading = () => (
 
 function Pages() {
   const { path } = useRouter()
-  const { t } = useI18n()
+  const { t, lang, setLang } = useI18n()
+  const { user, prefs } = useAuth()
+  // A signed-in account's language follows it to every device.
+  useEffect(() => {
+    if (user && prefs?.lang && prefs.lang !== lang) setLang(prefs.lang, { local: true })
+  }, [user?.id, prefs?.lang]) // eslint-disable-line react-hooks/exhaustive-deps
   const m = match(path)
   useEffect(() => {
     if (!['share', 'studio'].includes(m.page)) document.title = m.page === 'home' ? t('meta.title') : `${t(`meta.${m.page === 'legal' ? m.doc : m.page}`)} — Sceneshare`
@@ -126,6 +132,7 @@ function Pages() {
           {m.page === 'account' && <Account />}
           {m.page === 'admin' && <Admin />}
           {m.page === 'reset' && <Reset />}
+          {m.page === 'settings' && <Settings />}
           {m.page === 'legal' && <Legal key={m.doc} doc={m.doc} />}
           {m.page === 'privacyRequest' && <PrivacyRequest />}
           {m.page === 'notfound' && <NotFound />}
@@ -152,8 +159,9 @@ export default function App() {
   const value = useMemo(
     () => ({
       lang,
-      setLang: (l) => {
+      setLang: (l, { local = false } = {}) => {
         setLangState(l)
+        if (!local) savePrefs({ lang: l })
         try {
           localStorage.setItem('ss:lang', l)
         } catch {
