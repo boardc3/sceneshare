@@ -50,6 +50,10 @@ export async function generateImage({ prompt, images, aspectRatio }) {
       }
       const text = await r.text()
       last = { status: r.status, text: text.slice(0, 300) }
+      if (r.status === 402 || (r.status === 403 && /billing|credit|prepay/i.test(text))) {
+        console.error('[gemini] billing', text.slice(0, 300))
+        throw new ApiError(503, 'render_billing', 'Restyling is paused: the image model account is out of credits. Try again later.')
+      }
       if (r.status === 404 || r.status === 400) break // wrong model id or unsupported config → next model
       if (r.status === 429 || r.status >= 500) await new Promise((res) => setTimeout(res, 1500))
       else break
