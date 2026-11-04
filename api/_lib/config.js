@@ -14,7 +14,33 @@ function databaseUrl() {
   return k ? env[k] : ''
 }
 
+// Neon Auth (managed Better Auth), provisioned by the same Vercel integration:
+// SCENESHARE_NEON_AUTH_BASE_URL (server) and SCENESHARE_VITE_NEON_AUTH_URL (same
+// URL, meant for a browser build). We read either; the browser never talks to it
+// directly — /api/auth proxies it so the session cookie is first-party.
+function authUrl() {
+  const keys = Object.keys(env).sort()
+  const k =
+    (env.NEON_AUTH_BASE_URL && 'NEON_AUTH_BASE_URL') ||
+    keys.find((x) => /_NEON_AUTH_BASE_URL$/.test(x) && env[x]) ||
+    (env.VITE_NEON_AUTH_URL && 'VITE_NEON_AUTH_URL') ||
+    keys.find((x) => /_NEON_AUTH_URL$/.test(x) && env[x])
+  return k ? String(env[k]).trim().replace(/\/+$/, '') : ''
+}
+
+// Who may open /admin (signed in, email verified). Comma-separated.
+const adminEmails = (env.ADMIN_EMAILS || 'chris@ccolbert.com')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean)
+
 export const config = {
+  authUrl: authUrl(),
+  // Optional; when unset the session-cache cookie is signed with a key derived
+  // from the database URL (a server-only secret), so no extra setup is needed.
+  authSecret: env.AUTH_COOKIE_SECRET || '',
+  adminEmails,
+  production: env.VERCEL_ENV === 'production',
   geminiKey: env.GOOGLE_API_KEY || env.GEMINI_API_KEY || '',
   // "Nano Banana 2" = Gemini 3.1 Flash Image. Override without a redeploy of code.
   imageModel: env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
@@ -38,5 +64,5 @@ export const features = () => ({
   blob: Boolean(config.blobToken),
   database: Boolean(config.databaseUrl),
   sharing: Boolean(config.databaseUrl),
-  accounts: false,
+  accounts: Boolean(config.authUrl && config.databaseUrl),
 })

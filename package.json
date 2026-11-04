@@ -13,6 +13,7 @@
     "check": "node scripts/check.mjs"
   },
   "dependencies": {
+    "@neondatabase/auth": "0.7.0-beta",
     "@neondatabase/serverless": "^1.2.0",
     "@vercel/blob": "^2.8.2",
     "mapbox-gl": "3.33.0",
