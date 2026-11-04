@@ -63,9 +63,9 @@ export const config = {
   //   preview (default): plans, limits and the upgrade flow all work, no card is taken.
   //   stripe: Stripe Checkout. Test keys (sk_test_…) never charge real cards;
   //   live keys (sk_live_…) only work with STRIPE_ALLOW_LIVE=1.
-  billingMode: ['off', 'preview', 'stripe'].includes(env.BILLING_MODE) ? env.BILLING_MODE : 'preview',
-  stripeKey: env.STRIPE_SECRET_KEY || '',
-  stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET || '',
+  billingMode: String(env.BILLING_MODE || '').trim().toLowerCase().replace(/^['"]|['"]$/g, ''),
+  stripeKey: String(env.STRIPE_SECRET_KEY || '').trim().replace(/^['"]|['"]$/g, ''),
+  stripeWebhookSecret: String(env.STRIPE_WEBHOOK_SECRET || '').trim().replace(/^['"]|['"]$/g, ''),
   stripeAllowLive: /^(1|true|yes)$/i.test(env.STRIPE_ALLOW_LIVE || ''),
   stripePriceMonthly: env.STRIPE_PRICE_MONTHLY || '',
   stripePriceYearly: env.STRIPE_PRICE_YEARLY || '',
@@ -87,9 +87,18 @@ export const features = () => ({
 // What billing does right now: 'off', 'preview' (no money moves), 'test' (Stripe
 // test mode) or 'live'. A missing or refused Stripe key falls back to preview.
 export function billingState() {
-  if (config.billingMode === 'off') return 'off'
-  if (config.billingMode !== 'stripe') return 'preview'
-  if (/^(sk|rk)_test_/.test(config.stripeKey)) return 'test'
-  if (/^(sk|rk)_live_/.test(config.stripeKey) && config.stripeAllowLive) return 'live'
-  return 'preview'
+  return billingCheck().state
+}
+
+// Why billing is in the state it is — names the setting at fault, never its value.
+export function billingCheck() {
+  const mode = config.billingMode
+  if (mode === 'off') return { state: 'off', reason: 'BILLING_MODE is off' }
+  if (mode !== 'stripe') return { state: 'preview', reason: mode && mode !== 'preview' ? 'BILLING_MODE is not "stripe", "preview" or "off"' : 'BILLING_MODE is not "stripe"' }
+  const key = config.stripeKey
+  if (!key) return { state: 'preview', reason: 'STRIPE_SECRET_KEY is missing' }
+  if (/^pk_/.test(key)) return { state: 'preview', reason: 'STRIPE_SECRET_KEY is a publishable key (pk_…); use the secret key (sk_test_…)' }
+  if (/^(sk|rk)_test_/.test(key)) return { state: 'test', reason: config.stripeWebhookSecret ? 'ok' : 'STRIPE_WEBHOOK_SECRET is missing' }
+  if (/^(sk|rk)_live_/.test(key)) return config.stripeAllowLive ? { state: 'live', reason: config.stripeWebhookSecret ? 'ok' : 'STRIPE_WEBHOOK_SECRET is missing' } : { state: 'preview', reason: 'live key without STRIPE_ALLOW_LIVE=1' }
+  return { state: 'preview', reason: 'STRIPE_SECRET_KEY does not look like a Stripe secret key (sk_test_…)' }
 }
