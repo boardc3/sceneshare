@@ -88,12 +88,29 @@ function Terms() {
         determination or professional advice. Buyers and sellers should verify everything independently.
       </p>
 
-      <h2>7. Sharing</h2>
+      <h2 id="sharing">7. Sharing and link tracking</h2>
       <p>
         Anyone who has a home’s share link can view its page, including its address, photographs, designs and map. Buyer pages are marked so search engines do not
         index them, but links can be forwarded. Share links only with people you intend to see the home, and delete the home if you no longer want the page
         available.
       </p>
+      <ul>
+        <li>
+          <strong>Tracked links.</strong> Each time you share a home (by email, text, copied link or your device’s share sheet) the Service creates a unique link
+          and records the share: when, how, and — for email — the recipient addresses you entered, your name and your message. When someone opens a tracked link,
+          we count the click and record the time, approximate country and region, language and device type. The home’s owner sees these counts and the recipient
+          addresses in their dashboard. If someone other than the owner shares the home, the owner sees that a share happened and its clicks.
+        </li>
+        <li>
+          <strong>Your choice.</strong> The email form asks whether to track the link; tracking is selected by default and you can turn it off before sending.
+          We record the choice you make. Untracked links still open the home but their clicks are not counted.
+        </li>
+        <li>
+          <strong>Recipients.</strong> You must have a reasonable basis to send a home to each person you enter, and you are responsible for the message you send.
+          Emails are sent from your own mail app unless we tell you otherwise; we use recipient addresses only to show you your share history and never to market to
+          them. A recipient may ask us to delete their address through our <Link to="/privacy/request">privacy request page</Link>.
+        </li>
+      </ul>
 
       <h2>8. Acceptable use</h2>
       <p>You agree not to:</p>
@@ -236,6 +253,12 @@ function Privacy() {
               <td>With the record it is attached to (above).</td>
             </tr>
             <tr>
+              <td>Share records</td>
+              <td>For each share: how it was shared, the sender’s name and message, recipient email addresses (email shares), whether tracking was on, and for tracked links each click’s time, approximate country/region, language and device type.</td>
+              <td>The person sharing; the recipient’s browser when they open a tracked link</td>
+              <td>Until the home or the sharer’s account is deleted, or a recipient asks us to delete their address.</td>
+            </tr>
+            <tr>
               <td>Contact information you give buyers’ pages</td>
               <td>If you ask for updates about a home, your email address, language and the home it concerns.</td>
               <td>You</td>
@@ -257,6 +280,7 @@ function Privacy() {
         <li>To provide the Service: create and secure your account, save homes to it, retrieve listing photographs and location information, generate designs, and show share pages.</li>
         <li>To keep the Service safe and working: authenticate requests, prevent abuse with rate limits, debug errors, and keep audit records.</li>
         <li>To understand and improve the Service: aggregate analytics about which features are used (unless you turn analytics off).</li>
+        <li>To show owners their sharing activity: which shares were sent, to whom, and how many times each tracked link was clicked.</li>
         <li>To communicate with you: account emails (verification codes, password resets) and, if you asked, updates about a home.</li>
         <li>To comply with law and enforce our <Link to="/terms">Terms</Link>.</li>
       </ul>

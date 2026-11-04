@@ -113,6 +113,7 @@ function EmailShare({ id, address, owner, lang, defaultName, linkFor, onClose, o
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(null) // 'sent' | 'mailapp'
+  const [tracked, setTracked] = useState(true)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -125,13 +126,14 @@ function EmailShare({ id, address, owner, lang, defaultName, linkFor, onClose, o
     setBusy(true)
     const sid = rid()
     try {
-      const d = await post('/api/shares', { propertyId: id, channel: 'email', id: sid, recipients: list.join(','), name: name.trim(), message: message.trim(), lang })
+      const d = await post('/api/shares', { propertyId: id, channel: 'email', id: sid, recipients: list.join(','), name: name.trim(), message: message.trim(), lang, tracked })
       onShared?.()
-      track('share_email', { recipients: list.length, sent: d.sent, owner, linkLang: lang }, { propertyId: id })
+      track('share_email', { recipients: list.length, sent: d.sent, owner, linkLang: lang, tracked }, { propertyId: id })
       if (d.sent) setDone('sent')
       else {
         const subject = tl(owner ? 'share.mailSubjectOwner' : 'share.mailSubject', { address })
-        const body = `${message.trim()}\n\n${address}\n${linkFor(sid)}\n${name.trim() ? `\n— ${name.trim()}\n` : ''}`
+        const link = tracked ? linkFor(sid) : `${window.location.origin}/p/${id}${lang === 'zh' ? '?lang=zh' : ''}`
+        const body = `${message.trim()}\n\n${address}\n${link}\n${name.trim() ? `\n— ${name.trim()}\n` : ''}`
         window.location.href = `mailto:${list.map(encodeURIComponent).join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
         setDone('mailapp')
       }
@@ -176,7 +178,13 @@ function EmailShare({ id, address, owner, lang, defaultName, linkFor, onClose, o
               {error}
             </p>
           )}
-          <p className="fine">{t('share.form.fine')}</p>
+          <label className="check">
+            <input type="checkbox" checked={tracked} onChange={(e) => setTracked(e.target.checked)} />
+            <span>{t('share.form.track')}</span>
+          </label>
+          <p className="fine">
+            {t('share.form.fine')} <a href="/terms#sharing" target="_blank" rel="noreferrer">{t('legal.terms')}</a>
+          </p>
           <div className="dialog__actions">
             <button type="button" className="btn btn--quiet" onClick={onClose}>
               {t('gate.cancel')}

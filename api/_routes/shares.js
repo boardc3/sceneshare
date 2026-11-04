@@ -40,11 +40,13 @@ export default route(
     // The browser may propose the id, so a copied or texted link works instantly.
     const id = /^[a-z0-9]{10}$/.test(body.id || '') ? body.id : newId(10)
     const origin = (req.headers['x-forwarded-proto'] ? `${String(req.headers['x-forwarded-proto']).split(',')[0]}://` : 'https://') + String(req.headers['x-forwarded-host'] || req.headers.host || '')
-    const url = `${origin}/p/${row.id}?s=${id}${lang === 'zh' ? '&lang=zh' : ''}`
+    // The sender chooses whether opens are tracked (on by default); the choice is recorded.
+    const tracked = body.tracked !== false
+    const url = `${origin}/p/${row.id}${tracked ? `?s=${id}${lang === 'zh' ? '&lang=zh' : ''}` : lang === 'zh' ? '?lang=zh' : ''}`
     const senderName = String(body.name || user?.name || '').trim().slice(0, 80) || null
     const message = String(body.message || '').trim().slice(0, 2000) || null
 
-    await createShare({ id, propertyId: row.id, userId: user?.id || null, byOwner, channel, recipients, senderName, message, lang, visitorId: visitorId(req), sent: false })
+    await createShare({ id, propertyId: row.id, userId: user?.id || null, byOwner, channel, recipients, senderName, message, lang, visitorId: visitorId(req), sent: false, tracked })
 
     // Sent by us when an email service is configured; otherwise the browser opens
     // the sender's own mail app with the tracked link filled in.
@@ -54,7 +56,7 @@ export default route(
       if (sent) await markShareSent(id)
     }
 
-    await logSubmission({ user, kind: 'share', propertyId: row.id, lang, address: row.data?.address?.formatted || null, meta: { shareId: id, channel, recipients: recipients.length, byOwner, sent } })
+    await logSubmission({ user, kind: 'share', propertyId: row.id, lang, address: row.data?.address?.formatted || null, meta: { shareId: id, channel, recipients: recipients.length, byOwner, sent, tracked } })
     res._meta = { propertyId: row.id, shareId: id, channel, recipients: recipients.length, sent }
     send(res, 200, { ok: true, id, url, sent })
   },

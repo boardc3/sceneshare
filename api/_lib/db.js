@@ -270,6 +270,7 @@ async function migrate(s) {
   )`
   await s`create index if not exists shares_property_idx on shares (property_id, created_at desc)`
   await s`alter table share_views add column if not exists share_id text`
+  await s`alter table shares add column if not exists tracked boolean not null default true`
 
   await s`create table if not exists privacy_requests (
     id text primary key,
@@ -285,7 +286,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 async function upToDate(s) {
   try {
@@ -513,7 +514,7 @@ export function recordView(id, { lang = null, req = null, visitorId = null, shar
   return safe('recordView', async (s) => {
     let share = null
     if (shareId) {
-      const rows = await s`update shares set opens = opens + 1, last_opened_at = now() where id = ${shareId} and property_id = ${id} returning id`
+      const rows = await s`update shares set opens = opens + 1, last_opened_at = now() where id = ${shareId} and property_id = ${id} and tracked returning id`
       share = rows[0]?.id || null
     }
     await s`insert into share_views (property_id, lang, country, referrer, user_agent, visitor_id, share_id)
@@ -528,9 +529,9 @@ export function recordView(id, { lang = null, req = null, visitorId = null, shar
 export async function createShare(sh) {
   const s = await ensure()
   if (!s) return false
-  await s`insert into shares (id, property_id, user_id, by_owner, channel, recipients, recipient_count, sender_name, message, lang, visitor_id, sent)
+  await s`insert into shares (id, property_id, user_id, by_owner, channel, recipients, recipient_count, sender_name, message, lang, visitor_id, sent, tracked)
     values (${sh.id}, ${sh.propertyId}, ${sh.userId}, ${sh.byOwner}, ${sh.channel}, ${j(sh.recipients)}::jsonb, ${sh.recipients?.length || 0},
-      ${sh.senderName}, ${sh.message}, ${sh.lang}, ${sh.visitorId}, ${sh.sent})`
+      ${sh.senderName}, ${sh.message}, ${sh.lang}, ${sh.visitorId}, ${sh.sent}, ${sh.tracked !== false})`
   return true
 }
 
@@ -541,7 +542,7 @@ export function markShareSent(id) {
 export async function listShares(propertyId) {
   const s = await ensure()
   if (!s) return { shares: [], totals: null }
-  const shares = await s`select id, channel, by_owner, recipients, recipient_count, sender_name, lang, sent, opens, last_opened_at, created_at
+  const shares = await s`select id, channel, by_owner, recipients, recipient_count, sender_name, lang, sent, tracked, opens, last_opened_at, created_at
     from shares where property_id = ${propertyId} order by created_at desc limit 200`
   const [totals] = await s`select count(*)::int as shares, coalesce(sum(recipient_count), 0)::int as recipients,
       coalesce(sum(opens), 0)::int as opens, count(*) filter (where channel = 'email')::int as emails

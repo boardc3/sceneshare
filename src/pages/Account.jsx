@@ -3,6 +3,7 @@ import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { get, post } from '../lib/api.js'
 import { refresh, requireSignIn, sendVerifyCode, signOut, useAuth, verifyEmail } from '../lib/auth.js'
+import ShareStats from '../components/ShareStats.jsx'
 import { Link, useRouter } from '../router.jsx'
 
 // "My homes": every home the account searched or started, plus the account itself
@@ -155,6 +156,7 @@ export default function Account() {
                   </p>
                 )}
                 <p className="home__stats">{t('account.stats', { photos: h.photos, designs: h.designs, shares: h.shares || 0, views: h.share_views || 0 })}</p>
+                {h.formatted_address && <ShareStats id={h.id} />}
                 <div className="home__actions">
                   <Link to={`/studio/${h.id}`} className="btn btn--ink btn--small">
                     {t('account.open')}

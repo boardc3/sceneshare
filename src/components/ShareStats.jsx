@@ -53,7 +53,7 @@ export default function ShareStats({ id, refreshKey = 0 }) {
                     {!s.by_owner && <span className="fine"> · {t('stats.byBuyer')}</span>}
                   </td>
                   <td>{s.recipients?.length ? s.recipients.join(', ') : '—'}</td>
-                  <td>{s.opens}</td>
+                  <td>{s.tracked === false ? t('stats.untracked') : s.opens}</td>
                 </tr>
               ))}
             </tbody>
