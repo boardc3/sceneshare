@@ -100,15 +100,32 @@ export function bearing(a, b) {
 // Points of interest a buyer actually asks about (doc 07, rule 4): one per
 // category, the nearest of a few candidates. Category ids are tried in order
 // because Mapbox's canonical list varies by version; the first that answers wins.
+// `accept` / `reject` run against the place's name and Mapbox's own category labels,
+// so a music studio is not "the nearest school" and a hospice is not "the hospital"
+// (both happened on the first live run, 2026-11-04).
 const POI_CATEGORIES = [
   { key: 'beach', ids: ['beach'], radius: 8000 },
-  { key: 'park', ids: ['park'], radius: 3000 },
-  { key: 'school', ids: ['school', 'elementary_school', 'education'], radius: 4000 },
-  { key: 'grocery', ids: ['grocery', 'supermarket'], radius: 5000 },
+  { key: 'park', ids: ['park'], radius: 3000, reject: /beach|parking|dog run/i },
+  {
+    key: 'school',
+    ids: ['elementary_school', 'school', 'high_school', 'education'],
+    radius: 5000,
+    accept: /school|elementary|middle|high|academy|charter|k-8|k-12/i,
+    reject: /music|dance|driving|art|swim|surf|yoga|studio|tutor|language|pre-?school|day ?care|beauty|cooking|flight|martial|karate|montessori|learning center|college|university/i,
+  },
+  { key: 'grocery', ids: ['grocery', 'supermarket'], radius: 5000, reject: /liquor|convenience|7-eleven|gas|smoke|vape/i },
   { key: 'cafe', ids: ['coffee', 'cafe'], radius: 2500 },
-  { key: 'hospital', ids: ['hospital', 'health_services'], radius: 20000 },
-  { key: 'airport', ids: ['airport'], radius: 60000 },
+  {
+    key: 'hospital',
+    ids: ['hospital', 'health_services'],
+    radius: 25000,
+    accept: /hospital|medical center/i,
+    reject: /hospice|veterinar|animal|dental|clinic|urgent|rehab|behavioral|surgery center|imaging/i,
+  },
+  { key: 'airport', ids: ['airport'], radius: 60000, accept: /airport|international/i, reject: /heli|airstrip|seaplane/i },
 ]
+
+const label = (p) => [p.name, ...(p.poi_category || []), ...(p.poi_category_ids || [])].filter(Boolean).join(' ')
 
 async function nearestInCategory(cat, lat, lng, lang) {
   for (const id of cat.ids) {
@@ -116,7 +133,7 @@ async function nearestInCategory(cat, lat, lng, lang) {
       access_token: config.mapboxToken,
       proximity: `${lng},${lat}`,
       origin: `${lng},${lat}`,
-      limit: '5',
+      limit: '10',
       language: mbLang(lang),
       country: 'us',
     })
@@ -135,8 +152,9 @@ async function nearestInCategory(cat, lat, lng, lang) {
         return { p, loc, meters: distanceMeters({ lat, lng }, loc) }
       })
       .filter((x) => Number.isFinite(x.loc.lat) && x.meters <= cat.radius)
+      .filter((x) => (!cat.accept || cat.accept.test(label(x.p))) && (!cat.reject || !cat.reject.test(x.p.name || '')))
       .sort((a, b) => a.meters - b.meters)[0]
-    if (!best) return null
+    if (!best) continue // nothing suitable under this id → try the next one
     return {
       category: cat.key,
       name: best.p.name || '',
