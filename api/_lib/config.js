@@ -22,8 +22,9 @@ export const features = () => ({
   render: Boolean(config.geminiKey),
   maps: Boolean(config.mapboxToken),
   scraper: Boolean(config.scraperKey),
-  storage: Boolean(config.blobToken),
+  storage: Boolean(config.blobToken || config.databaseUrl),
+  blob: Boolean(config.blobToken),
   database: Boolean(config.databaseUrl),
-  sharing: Boolean(config.blobToken && config.databaseUrl),
+  sharing: Boolean(config.databaseUrl),
   accounts: false,
 })

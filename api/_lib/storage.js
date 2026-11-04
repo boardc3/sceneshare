@@ -1,5 +1,6 @@
 import { put } from '@vercel/blob'
 import { config } from './config.js'
+import { putImage } from './db.js'
 import { fetchWithTimeout } from './http.js'
 import { scraperFetch } from './scraper.js'
 
@@ -58,17 +59,31 @@ export async function downloadImage(url, { referer } = {}) {
   throw new Error(`download failed: ${url}`)
 }
 
-// Store bytes in Vercel Blob. Returns the public URL, or null when Blob is not configured.
-export async function storeImage(buffer, path, contentType = 'image/jpeg') {
-  if (!config.blobToken) return null
-  const res = await put(path, buffer, {
-    access: 'public',
-    contentType,
-    addRandomSuffix: true,
-    token: config.blobToken,
-  })
-  return res.url
+const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789'
+const imageId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => ALPHA[b % ALPHA.length]).join('')
+
+// Store image bytes and return the URL to show them at: Vercel Blob when it is set
+// up, otherwise Neon (served by /api/media), otherwise null (the caller falls back
+// to an inline data URL).
+export async function storeImage(buffer, { propertyId = 'loose', kind = 'image', contentType = 'image/jpeg' } = {}) {
+  if (config.blobToken) {
+    const res = await put(`properties/${propertyId}/${kind}.jpg`, buffer, {
+      access: 'public',
+      contentType,
+      addRandomSuffix: true,
+      token: config.blobToken,
+    })
+    return res.url
+  }
+  if (config.databaseUrl) {
+    const id = imageId()
+    await putImage(id, buffer, { propertyId, kind, contentType })
+    return `/api/media?id=${id}`
+  }
+  return null
 }
+
+export const canStoreImages = () => Boolean(config.blobToken || config.databaseUrl)
 
 export const toDataUrl = (buf, type = 'image/jpeg') => `data:${type};base64,${buf.toString('base64')}`
 

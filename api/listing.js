@@ -1,10 +1,10 @@
 import { config } from './_lib/config.js'
-import { logSubmission } from './_lib/db.js'
+import { logSubmission, saveListing } from './_lib/db.js'
 import { newId, requireEmail } from './_lib/gate.js'
 import { readJson, route, send } from './_lib/http.js'
 import { normalize } from './_lib/images.js'
 import { fetchRedfin, findRedfinUrl } from './_lib/redfin.js'
-import { downloadImage, storeImage } from './_lib/storage.js'
+import { canStoreImages, downloadImage, storeImage } from './_lib/storage.js'
 import { fetchZillow, findZpid } from './_lib/zillow.js'
 
 export const maxDuration = 300
@@ -51,9 +51,11 @@ export default route(['POST'], async (req, res) => {
         const i = next++
         const p = list[i]
         try {
-          if (config.blobToken) {
-            const n = await normalize(await downloadImage(p.url, { referer }), 2048)
-            const url = await storeImage(n.buffer, `properties/${propertyId || 'x'}/listing-${String(i + 1).padStart(2, '0')}.jpg`)
+          if (canStoreImages()) {
+            // 1600 px is plenty for the studio and the buyer page, and keeps a home's
+            // listing set to a few MB when images live in Neon.
+            const n = await normalize(await downloadImage(p.url, { referer }), 1600)
+            const url = await storeImage(n.buffer, { propertyId: propertyId || 'loose', kind: `listing-${String(i + 1).padStart(2, '0')}` })
             out[i] = { src: url, width: n.width, height: n.height }
           } else {
             // No storage configured: serve through our image endpoint instead.
@@ -66,7 +68,7 @@ export default route(['POST'], async (req, res) => {
     }
     await Promise.all(Array.from({ length: 6 }, worker))
     photos = out
-      .map((o, i) => o && { id: newId(6), ...o, source: pick.source, credit: `Listing photo via ${sourceName}`, caption: list[i].caption || '' })
+      .map((o, i) => o && { id: newId(6), ...o, source: pick.source, sourceUrl: list[i].url, credit: `Listing photo via ${sourceName}`, caption: list[i].caption || '' })
       .filter(Boolean)
   }
 
@@ -79,16 +81,15 @@ export default route(['POST'], async (req, res) => {
     meta: { zillow: { ok: z.ok, n: z.photos?.length || 0, tried: z.tried }, redfin: { ok: r.ok, n: r.photos?.length || 0, tried: r.tried }, used: pick?.source || null },
   })
 
+  const listing = { zillow: z.url || null, redfin: r.url || null, used: pick?.source || null }
+  if (/^[a-z0-9]{6,20}$/.test(propertyId)) await saveListing(propertyId, { facts, listing, photos, email })
+
   send(res, 200, {
     ok: true,
     found: photos.length > 0,
     reason: photos.length ? null : z.reason === 'not_on_zillow' && r.reason === 'not_on_redfin' ? 'not_listed' : 'no_photos',
     facts,
-    listing: {
-      zillow: z.url || null,
-      redfin: r.url || null,
-      used: pick?.source || null,
-    },
-    photos,
+    listing,
+    photos: photos.map(({ sourceUrl, ...ph }) => ph), // eslint-disable-line no-unused-vars
   })
 })

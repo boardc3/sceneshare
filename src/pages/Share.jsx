@@ -12,12 +12,14 @@ const chosen = (ph) => ph.versions?.find((v) => v.id === ph.chosen) || ph.versio
 // What a remote buyer sees: the address, each room as photographed and as
 // proposed, and the location. Read-only, bilingual, phone-first.
 export default function Share({ id }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [property, setProperty] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    get(`/api/properties?id=${id}`)
+    // Count a buyer view, but not the owner previewing their own page on this device.
+    const owner = Boolean(cachedProperty(id))
+    get(`/api/properties?id=${id}${owner ? '' : `&view=1&lang=${lang}`}`)
       .then((d) => setProperty(d.property))
       .catch((e) => {
         const local = cachedProperty(id)

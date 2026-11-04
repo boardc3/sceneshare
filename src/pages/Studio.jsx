@@ -86,7 +86,7 @@ export default function Studio({ id }) {
       .catch(() => setListing('none'))
   }, [property, listing, lang, update])
 
-  // Save for sharing (debounced) when storage + database are configured.
+  // Save the snapshot buyers see (debounced) when the database is configured.
   const saveTimer = useRef(null)
   useEffect(() => {
     if (!features.sharing || !property?.address) return
@@ -114,7 +114,7 @@ export default function Studio({ id }) {
       try {
         const d = await submit(
           '/api/render',
-          { source: ph.src, propertyId: propRef.current.id, lang, addressText, mode, style, light, ...opts },
+          { source: ph.src, photoId: ph.id, propertyId: propRef.current.id, lang, addressText, mode, style, light, ...opts },
           opts.mode === 'feedback' ? 'feedback' : 'render',
         )
         if (!d) return false

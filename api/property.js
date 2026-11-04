@@ -1,4 +1,4 @@
-import { logSubmission } from './_lib/db.js'
+import { logSubmission, upsertProperty } from './_lib/db.js'
 import { newId, requireEmail } from './_lib/gate.js'
 import { geocode, nearby } from './_lib/mapbox.js'
 import { ApiError, readJson, route, send } from './_lib/http.js'
@@ -27,17 +27,7 @@ export default route(['POST'], async (req, res) => {
   const [parcel, pois] = await Promise.all([parcelFor(addr), nearby(addr.lat, addr.lng, lang)])
   const photos = []
 
-  send(res, 200, {
-    ok: true,
-    property: {
-      id,
-      createdAt: new Date().toISOString(),
-      address: addr,
-      parcel,
-      pois,
-      photos,
-      facts: null,
-      listing: null,
-    },
-  })
+  const property = { id, createdAt: new Date().toISOString(), address: addr, parcel, pois, photos, facts: null, listing: null }
+  await upsertProperty(property, { email, origin: body.propertyId ? 'own' : 'address', lang })
+  send(res, 200, { ok: true, property })
 })

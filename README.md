@@ -43,8 +43,8 @@ React (Vite) front end + Vercel Node functions in `api/`. No videos, by design.
 | `MAPBOX_TOKEN` | the maps, address suggestions, geocoding and nearby places. A **public** token (`pk.…`) — the browser receives it, so restrict it in Mapbox to `localhost` and your Vercel domains | yes |
 | `MAPBOX_PERMANENT_GEOCODING` | set to `1` once the Mapbox account has permanent geocoding; Mapbox's terms require it for addresses you store (share links) | before launch |
 | `SCRAPERAPI_KEY` | Zillow / Redfin listing photos and facts | for listing photos |
-| `BLOB_READ_WRITE_TOKEN` | stores pulled photos, uploads, renders (Vercel → Storage → Blob) | for sharing |
-| `DATABASE_URL` | Neon Postgres: email capture log, saved properties for share links (Vercel → Storage → Neon) | for capture + sharing |
+| `DATABASE_URL` | Neon Postgres (added automatically by Vercel → Storage → Neon): everything below, plus images when Blob is not set up | yes |
+| `BLOB_READ_WRITE_TOKEN` | optional: Vercel Blob for images. When present, new images go to Blob and Neon keeps only the records | no |
 | `GEMINI_IMAGE_MODEL` | optional override, default `gemini-3.1-flash-image` (falls back to `-preview`) | no |
 | `GEMINI_IMAGE_SIZE` | optional, default `2K` | no |
 
@@ -52,6 +52,25 @@ Tables create themselves on first use. `/api/health` shows which features are sw
 Maps are Mapbox GL JS (`mapbox-gl` 3.33.0, its own lazily loaded chunk), with the token served from
 `/api/health` so it can change in Vercel without a rebuild. This replaces doc 07's keyless
 Leaflet/Esri rule for this project, at Chris's request (2026-11-04).
+
+## What gets saved (Neon)
+
+Tables create and upgrade themselves on first use (`api/_lib/db.js`) — no migration step.
+
+| table | one row per | holds |
+|---|---|---|
+| `leads` | email captured | first/last seen, language, country/region (from Vercel's headers — no IP), submissions count |
+| `submissions` | action | every address search, listing lookup, upload, render and change request, with its details |
+| `properties` | home | address parts, lat/lng, Mapbox id, parcel APN/area/geometry, nearby places, Zillow facts, listing links, share-view count, and `data` — the snapshot the buyer page is drawn from |
+| `photos` | photo | source (zillow / redfin / owner), the original listing URL, our copy, size, caption, hidden, chosen version |
+| `renders` | restyle / relight / change | mode, style, light, change text, model, alignment score, attempts, time, image |
+| `share_views` | buyer visit | when, language, country, referrer |
+| `images` | image | the bytes, when Blob is not set up — served at `/api/media?id=…` with a one-year cache |
+| `users` | — | placeholder for accounts |
+
+Only the email that created a property can overwrite its snapshot. Images in Neon cost about
+0.3–0.5 MB each (listing photos are kept at 1600 px), so a fully restyled home is roughly
+5–10 MB; add Vercel Blob before heavy use and new images move there automatically.
 
 ## How a render works
 

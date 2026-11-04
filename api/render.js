@@ -1,4 +1,4 @@
-import { logSubmission } from './_lib/db.js'
+import { logSubmission, saveRender } from './_lib/db.js'
 import { newId, requireEmail } from './_lib/gate.js'
 import { generateImage } from './_lib/gemini.js'
 import { ApiError, readJson, route, send } from './_lib/http.js'
@@ -60,8 +60,10 @@ export default route(['POST'], async (req, res) => {
   }
   const size = outputSize(source.width, source.height)
   const fitted = await fitTo(out.buffer, size.width, size.height)
-  const propertyId = String(body.propertyId || 'loose').slice(0, 20)
-  const stored = await storeImage(fitted.buffer, `properties/${propertyId}/render-${newId(8)}.jpg`)
+  const propertyId = /^[a-z0-9]{6,20}$/.test(body.propertyId || '') ? body.propertyId : 'loose'
+  const photoId = /^[a-z0-9]{4,12}$/.test(body.photoId || '') ? body.photoId : null
+  const versionId = newId(8)
+  const stored = await storeImage(fitted.buffer, { propertyId, kind: `render-${versionId}` })
 
   await logSubmission({
     email,
@@ -69,25 +71,24 @@ export default route(['POST'], async (req, res) => {
     propertyId,
     lang: body.lang,
     address: body.addressText || null,
-    meta: { mode, style, light, feedback: feedback || undefined, ms: Date.now() - started, model: out.model, align: Number(score.toFixed(3)), attempts },
+    meta: { versionId, photoId, mode, style, light, feedback: feedback || undefined, ms: Date.now() - started, model: out.model, align: Number(score.toFixed(3)), attempts },
   })
 
-  send(res, 200, {
-    ok: true,
-    version: {
-      id: newId(8),
-      src: stored || toDataUrl(fitted.buffer),
-      width: fitted.width,
-      height: fitted.height,
-      mode,
-      style: mode === 'redesign' ? style : null,
-      light,
-      feedback: feedback || null,
-      model: out.model,
-      align: Number(score.toFixed(3)),
-      attempts,
-      ms: Date.now() - started,
-      at: new Date().toISOString(),
-    },
-  })
+  const version = {
+    id: versionId,
+    src: stored || toDataUrl(fitted.buffer),
+    width: fitted.width,
+    height: fitted.height,
+    mode,
+    style: mode === 'redesign' ? style : null,
+    light,
+    feedback: feedback || null,
+    model: out.model,
+    align: Number(score.toFixed(3)),
+    attempts,
+    ms: Date.now() - started,
+    at: new Date().toISOString(),
+  }
+  if (stored) await saveRender(version, { propertyId, photoId, email, note: String(body.note || '').trim() || null, lang: body.lang })
+  send(res, 200, { ok: true, version })
 })
