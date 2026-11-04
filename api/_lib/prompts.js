@@ -23,6 +23,7 @@ CAMERA LOCK
 
 ROOM DIMENSIONS LOCK
 - Same room width, depth and ceiling height. Same wall positions and wall count. Same ceiling form (flat, vaulted, sloped, beamed) and the same ceiling height everywhere.
+- CEILING LOCK: a flat ceiling stays flat. Do NOT add trays, coffers, beams, vaults, coves, soffits, recesses or raised panels, whatever the design direction below suggests. Only the ceiling's finish (smooth plaster, paint) and its light fixtures may change, in the same positions.
 - Same floor plan: no walls added, removed, moved, thickened or opened up. No new soffits, niches, columns, bulkheads, islands, steps, platforms or built-ins that change the footprint.
 - Furniture is scaled to the real room. A sofa that would not fit the real wall is not allowed.
 - FOOTPRINT RULE: replace each existing piece of furniture with a new piece of about the same footprint in the same place (a sofa where the sofa was, a chair where the chair was). Built-ins, fireplaces, counters and islands keep their exact outline and position; only their finishes change.
