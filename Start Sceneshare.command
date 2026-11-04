@@ -30,8 +30,10 @@ if ! ok_node; then
 fi
 echo "Using Node $(node -v)"
 
-# Reinstall when the Mac-specific build tools are missing (an install made with an older Node).
-if [ ! -d node_modules/@rolldown/binding-darwin-arm64 ] && [ ! -d node_modules/@rolldown/binding-darwin-x64 ]; then
+# Reinstall when the Mac-specific build tools are missing (an install made with an older Node)
+# or when the dependencies changed since the last install.
+if { [ ! -d node_modules/@rolldown/binding-darwin-arm64 ] && [ ! -d node_modules/@rolldown/binding-darwin-x64 ]; } \
+   || [ ! -f node_modules/.package-lock.json ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
   echo "Installing dependencies…"
   rm -rf node_modules
   if ! npm ci; then
