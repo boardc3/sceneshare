@@ -2,6 +2,18 @@
 // configured at /api/health and degrades feature by feature.
 const env = process.env
 
+// Vercel's Neon integration names its variables with the prefix chosen at install
+// (this project: SCENESHARE_DATABASE_URL). Take the plain names first, then any
+// pooled *_DATABASE_URL / *_POSTGRES_URL the integration added.
+function databaseUrl() {
+  if (env.DATABASE_URL) return env.DATABASE_URL
+  if (env.POSTGRES_URL) return env.POSTGRES_URL
+  const keys = Object.keys(env).sort()
+  const pick = (re) => keys.find((k) => re.test(k) && env[k])
+  const k = pick(/_DATABASE_URL$/) || pick(/_POSTGRES_URL$/)
+  return k ? env[k] : ''
+}
+
 export const config = {
   geminiKey: env.GOOGLE_API_KEY || env.GEMINI_API_KEY || '',
   // "Nano Banana 2" = Gemini 3.1 Flash Image. Override without a redeploy of code.
@@ -14,7 +26,7 @@ export const config = {
   mapboxPermanent: /^(1|true|yes)$/i.test(env.MAPBOX_PERMANENT_GEOCODING || ''),
   scraperKey: env.SCRAPERAPI_KEY || '',
   blobToken: env.BLOB_READ_WRITE_TOKEN || '',
-  databaseUrl: env.DATABASE_URL || env.POSTGRES_URL || '',
+  databaseUrl: databaseUrl(),
   maxListingPhotos: Number(env.MAX_LISTING_PHOTOS || 24),
 }
 

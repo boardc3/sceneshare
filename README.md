@@ -43,7 +43,7 @@ React (Vite) front end + Vercel Node functions in `api/`. No videos, by design.
 | `MAPBOX_TOKEN` | the maps, address suggestions, geocoding and nearby places. A **public** token (`pk.…`) — the browser receives it, so restrict it in Mapbox to `localhost` and your Vercel domains | yes |
 | `MAPBOX_PERMANENT_GEOCODING` | set to `1` once the Mapbox account has permanent geocoding; Mapbox's terms require it for addresses you store (share links) | before launch |
 | `SCRAPERAPI_KEY` | Zillow / Redfin listing photos and facts | for listing photos |
-| `DATABASE_URL` | Neon Postgres (added automatically by Vercel → Storage → Neon): everything below, plus images when Blob is not set up | yes |
+| `DATABASE_URL` | Neon Postgres, added automatically by Vercel → Storage → Neon. A prefixed name works too (this project's integration created `SCENESHARE_DATABASE_URL`). Holds everything below, plus images when Blob is not set up | yes |
 | `BLOB_READ_WRITE_TOKEN` | optional: Vercel Blob for images. When present, new images go to Blob and Neon keeps only the records | no |
 | `GEMINI_IMAGE_MODEL` | optional override, default `gemini-3.1-flash-image` (falls back to `-preview`) | no |
 | `GEMINI_IMAGE_SIZE` | optional, default `2K` | no |
