@@ -3,11 +3,57 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // Before/after slider. The box takes its aspect ratio from the source photo's own
 // pixels (aspect ratio is law — doc 08, rule 2b); both images are `contain`ed in
 // that box, so nothing is ever stretched or cropped differently from the other.
-export default function Compare({ before, after, width, height, beforeLabel, afterLabel, alt = '', start = 50 }) {
+export default function Compare({ before, after, width, height, beforeLabel, afterLabel, alt = '', start = 50, intro = false }) {
   const box = useRef(null)
-  const [pos, setPos] = useState(start)
+  const [pos, setPos] = useState(intro ? 96 : start)
   const [ratio, setRatio] = useState(width && height ? `${width} / ${height}` : null)
   const dragging = useRef(false)
+  const touched = useRef(false)
+
+  // Intro: once the slider scrolls into view, sweep from "as photographed" across to
+  // the proposal and settle in the middle — the transformation, shown without a click.
+  useEffect(() => {
+    if (!intro || !after || !box.current) return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setPos(start)
+      return
+    }
+    let raf = 0
+    let t0 = 0
+    const keys = [
+      [0, 96],
+      [700, 96],
+      [2300, 4],
+      [3100, 4],
+      [4100, start],
+    ]
+    const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2)
+    const tick = (now) => {
+      if (touched.current) return
+      if (!t0) t0 = now
+      const t = now - t0
+      let i = keys.findIndex((k) => k[0] > t)
+      if (i === -1) return setPos(start)
+      const [ta, pa] = keys[i - 1]
+      const [tb, pb] = keys[i]
+      setPos(pa + (pb - pa) * ease((t - ta) / (tb - ta)))
+      raf = requestAnimationFrame(tick)
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect()
+          raf = requestAnimationFrame(tick)
+        }
+      },
+      { threshold: 0.45 },
+    )
+    io.observe(box.current)
+    return () => {
+      io.disconnect()
+      cancelAnimationFrame(raf)
+    }
+  }, [intro, after, start])
 
   useEffect(() => {
     if (width && height) setRatio(`${width} / ${height}`)
@@ -18,6 +64,7 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
   }
 
   const moveTo = useCallback((clientX) => {
+    touched.current = true
     const r = box.current?.getBoundingClientRect()
     if (!r) return
     setPos(Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100)))
@@ -35,6 +82,7 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
   }, [moveTo])
 
   const onKey = (e) => {
+    touched.current = true
     if (e.key === 'ArrowLeft') setPos((p) => Math.max(0, p - 5))
     if (e.key === 'ArrowRight') setPos((p) => Math.min(100, p + 5))
     if (e.key === 'Home') setPos(0)

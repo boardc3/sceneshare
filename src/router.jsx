@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 
-// A tiny history router: '/', '/studio/:id', '/studio/new', '/p/:id'.
+// A tiny history router. Routes are listed in match() below.
 const Ctx = createContext({ path: '/', navigate: () => {} })
 
 export function Router({ children }) {
@@ -21,14 +21,15 @@ export function Router({ children }) {
 
 export const useRouter = () => useContext(Ctx)
 
-export function Link({ to, children, ...rest }) {
+export function Link({ to, children, onClick, ...rest }) {
   const { navigate } = useRouter()
   return (
     <a
       href={to}
       {...rest}
       onClick={(e) => {
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+        onClick?.(e)
+        if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0 || rest.target) return
         e.preventDefault()
         navigate(to)
       }}
@@ -38,11 +39,20 @@ export function Link({ to, children, ...rest }) {
   )
 }
 
+const ID = '([a-z0-9]{6,20})'
 export function match(path) {
   let m
-  if (path === '/' || path === '') return { page: 'home' }
-  if (path === '/studio/new') return { page: 'own' }
-  if ((m = /^\/studio\/([a-z0-9]{6,20})\/?$/.exec(path))) return { page: 'studio', id: m[1] }
-  if ((m = /^\/p\/([a-z0-9]{6,20})\/?$/.exec(path))) return { page: 'share', id: m[1] }
+  const p = path.replace(/\/+$/, '') || '/'
+  if (p === '/') return { page: 'home' }
+  if (p === '/studio/new') return { page: 'own' }
+  if ((m = new RegExp(`^/studio/${ID}$`).exec(p))) return { page: 'studio', id: m[1] }
+  if ((m = new RegExp(`^/p/${ID}$`).exec(p))) return { page: 'share', id: m[1] }
+  if (p === '/account') return { page: 'account' }
+  if (p === '/admin') return { page: 'admin' }
+  if (p === '/reset') return { page: 'reset' }
+  if (p === '/terms') return { page: 'legal', doc: 'terms' }
+  if (p === '/privacy') return { page: 'legal', doc: 'privacy' }
+  if (p === '/cookies') return { page: 'legal', doc: 'cookies' }
+  if (p === '/privacy/request') return { page: 'privacyRequest' }
   return { page: 'notfound' }
 }

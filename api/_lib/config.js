@@ -54,6 +54,11 @@ export const config = {
   blobToken: env.BLOB_READ_WRITE_TOKEN || '',
   databaseUrl: databaseUrl(),
   maxListingPhotos: Number(env.MAX_LISTING_PHOTOS || 24),
+  // Optional: send share emails ourselves (Resend). Needs a verified sending domain,
+  // e.g. SHARE_FROM_EMAIL="Sceneshare <homes@sceneshare.app>". Without these the
+  // sender's own mail app sends the email, with the same tracked link.
+  mailKey: env.RESEND_API_KEY || '',
+  mailFrom: env.SHARE_FROM_EMAIL || '',
 }
 
 export const features = () => ({
@@ -65,4 +70,5 @@ export const features = () => ({
   database: Boolean(config.databaseUrl),
   sharing: Boolean(config.databaseUrl),
   accounts: Boolean(config.authUrl && config.databaseUrl),
+  mail: Boolean(config.mailKey && config.mailFrom),
 })

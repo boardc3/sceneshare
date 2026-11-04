@@ -16,7 +16,29 @@
       "destination": "/api/auth?__path=:path*"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/api/:fn(account|admin|events|lead|privacy|shares)",
+      "destination": "/api/app?fn=:fn"
+    },
+    {
+      "source": "/api/:fn(media|img|og)",
+      "destination": "/api/assets?fn=:fn"
+    },
+    {
+      "source": "/p/:id",
+      "has": [
+        {
+          "type": "query",
+          "key": "plain"
+        }
+      ],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/p/:id",
+      "destination": "/api/assets?fn=page&id=:id"
+    },
+    {
+      "source": "/((?!api/|_vercel/).*)",
       "destination": "/index.html"
     }
   ],
@@ -40,6 +62,15 @@
       ]
     },
     {
+      "source": "/(p|studio|account|admin)(/.*)?",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         {
@@ -47,12 +78,28 @@
           "value": "nosniff"
         },
         {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
           "key": "Referrer-Policy",
           "value": "strict-origin-when-cross-origin"
         },
         {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
           "key": "Permissions-Policy",
-          "value": "camera=(self), geolocation=()"
+          "value": "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+        },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.mapbox.com https://*.public.blob.vercel-storage.com https://photos.zillowstatic.com https://ssl.cdn-redfin.com https://*.googleusercontent.com; connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://va.vercel-scripts.com; worker-src 'self' blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri /api/events"
         }
       ]
     }

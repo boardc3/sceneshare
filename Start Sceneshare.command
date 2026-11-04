@@ -5,8 +5,9 @@
 cd "${0:A:h}" || exit 1
 echo "Sceneshare — local review"
 
-# API keys (GOOGLE_API_KEY, GOOGLE_MAPS_API_KEY, SCRAPERAPI_KEY) come from your shell profile
-# or from .env.local in this folder.
+# With production keys in .env.local (DATABASE_URL, GOOGLE_API_KEY, …) this runs the real
+# app. Without them it runs the local preview: sign-in, listing photos and restyles are
+# simulated on this computer (scripts/dev-mocks.mjs), and changes appear as they are saved.
 [ -f "$HOME/.zshrc" ] && source "$HOME/.zshrc" >/dev/null 2>&1
 
 ok_node() {
@@ -43,4 +44,9 @@ if { [ ! -d node_modules/@rolldown/binding-darwin-arm64 ] && [ ! -d node_modules
   fi
 fi
 
-npm run dev -- --open
+if [ -f .env.local ] && grep -q '^DATABASE_URL=' .env.local; then
+  npm run dev -- --open
+else
+  echo "No production keys here — starting the local preview (simulated sign-in and restyles)."
+  npm run dev:demo -- --open
+fi

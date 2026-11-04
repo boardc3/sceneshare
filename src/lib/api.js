@@ -1,50 +1,6 @@
-// Client side of the API. Every submission goes through `withEmail`, which opens
-// the email gate the first time and reuses the saved email after that.
-
-const EMAIL_KEY = 'ss:email'
-const store = {
-  get(k) {
-    try {
-      return localStorage.getItem(k)
-    } catch {
-      return null
-    }
-  },
-  set(k, v) {
-    try {
-      localStorage.setItem(k, v)
-    } catch {
-      /* private mode: keep in memory only */
-    }
-  },
-}
-
-let memEmail = null
-export const savedEmail = () => memEmail || store.get(EMAIL_KEY)
-
-// --- email gate plumbing (the modal lives in EmailGate.jsx) ---
-let listener = null
-export function onGateRequest(fn) {
-  listener = fn
-  return () => {
-    if (listener === fn) listener = null
-  }
-}
-export function requestEmail(context) {
-  const e = savedEmail()
-  if (e) return Promise.resolve(e)
-  if (!listener) return Promise.resolve(null)
-  return new Promise((resolve) => listener({ context, resolve }))
-}
-export async function rememberEmail(email, lang, context) {
-  memEmail = email
-  store.set(EMAIL_KEY, email)
-  try {
-    await post('/api/lead', { email, lang, context })
-  } catch {
-    /* the next submission logs it anyway */
-  }
-}
+// Client side of the API: JSON in and out, the analytics ids (only when the
+// visitor allows analytics), and clear errors.
+import { analyticsHeaders } from './analytics.js'
 
 export class ApiError extends Error {
   constructor(code, message, status) {
@@ -68,9 +24,9 @@ async function handle(r) {
 export async function get(path) {
   let r
   try {
-    r = await fetch(path)
+    r = await fetch(path, { headers: analyticsHeaders(), credentials: 'same-origin' })
   } catch {
-    throw new ApiError('network', '')
+    throw new ApiError('network', '', 0)
   }
   return handle(r)
 }
@@ -78,31 +34,22 @@ export async function get(path) {
 export async function post(path, body) {
   let r
   try {
-    r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    r = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...analyticsHeaders() },
+      credentials: 'same-origin',
+      body: JSON.stringify(body),
+    })
   } catch {
-    throw new ApiError('network', '')
+    throw new ApiError('network', '', 0)
   }
   return handle(r)
 }
 
-// Gate, then post with the email attached. Resolves null when the visitor
-// dismisses the gate.
-export async function submit(path, body, context) {
-  const email = await requestEmail(context)
-  if (!email) return null
-  try {
-    return await post(path, { ...body, email })
-  } catch (e) {
-    if (e.code === 'email_required') {
-      memEmail = null
-      store.set(EMAIL_KEY, '')
-      const again = await requestEmail(context)
-      if (!again) return null
-      return post(path, { ...body, email: again })
-    }
-    throw e
-  }
-}
+// Errors worth another try: the model was busy or slow, the network blinked.
+export const retriable = (e) => e?.code === 'network' || e?.status === 0 || e?.status === 429 || e?.status === 502 || e?.status === 503 || e?.status === 504 || e?.code === 'render_failed' || e?.code === 'render_busy' || e?.code === 'property_busy' || e?.code === 'server_error' || /^http_5/.test(e?.code || '')
+
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 let healthCache = null
 export function health() {
@@ -110,27 +57,10 @@ export function health() {
   return healthCache
 }
 
-// --- local property cache: the studio works before (and without) a database ---
-const PKEY = (id) => `ss:property:${id}`
-export function cacheProperty(p) {
-  try {
-    // Inline images can blow the quota; drop the cache rather than the session.
-    localStorage.setItem(PKEY(p.id), JSON.stringify(p))
-    const ids = JSON.parse(localStorage.getItem('ss:owned') || '[]').filter((x) => x !== p.id)
-    ids.unshift(p.id)
-    localStorage.setItem('ss:owned', JSON.stringify(ids.slice(0, 30)))
-  } catch {
-    /* quota or private mode */
-  }
-}
-export function cachedProperty(id) {
-  try {
-    const raw = localStorage.getItem(PKEY(id))
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
+// Hand-off from a search to the studio (so the studio paints instantly).
+const memory = new Map()
+export const rememberProperty = (p) => p?.id && memory.set(p.id, p)
+export const recalledProperty = (id) => memory.get(id) || null
 
 // Shrink a camera or library photo in the browser before upload: honours EXIF
 // orientation, caps the long edge at 2048 px, JPEG at 0.88 (Vercel's request

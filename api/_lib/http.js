@@ -1,13 +1,21 @@
+import { recentRequests } from './db.js'
+import { ipHash, logRequest } from './log.js'
+
 // Small helpers that work the same on Vercel's Node runtime and in the local
 // Vite dev adapter (vite.config.js). Handlers only use plain Node req/res.
 
 export async function readJson(req) {
   if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body
-  if (typeof req.body === 'string') return req.body ? JSON.parse(req.body) : {}
-  const chunks = []
-  for await (const c of req) chunks.push(c)
-  const raw = Buffer.concat(chunks).toString('utf8')
-  return raw ? JSON.parse(raw) : {}
+  try {
+    if (typeof req.body === 'string') return req.body ? JSON.parse(req.body) : {}
+    if (Buffer.isBuffer(req.body)) return req.body.length ? JSON.parse(req.body.toString('utf8')) : {}
+    const chunks = []
+    for await (const c of req) chunks.push(c)
+    const raw = Buffer.concat(chunks).toString('utf8')
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    throw new ApiError(400, 'bad_json', 'That request could not be read.')
+  }
 }
 
 export function query(req) {
@@ -24,28 +32,54 @@ export function send(res, status, body, headers = {}) {
 }
 
 export function fail(res, status, code, message, extra = {}) {
+  res._code = code
   send(res, status, { ok: false, error: code, message, ...extra })
 }
 
-// Wrap a handler so thrown errors become JSON instead of a bare 500.
-export function route(methods, fn) {
-  return async (req, res) => {
-    if (!methods.includes(req.method)) return fail(res, 405, 'method_not_allowed', `Use ${methods.join(' or ')}.`)
-    try {
-      await fn(req, res)
-    } catch (err) {
-      if (!(err instanceof ApiError) || err.status >= 500) console.error('[api]', req.url, err)
-      if (!res.headersSent) fail(res, err.status || 500, err.code || 'server_error', err.publicMessage || 'Something went wrong on our side. Try again in a moment.')
-    }
-  }
-}
-
 export class ApiError extends Error {
-  constructor(status, code, publicMessage) {
+  constructor(status, code, publicMessage, extra = null) {
     super(publicMessage)
     this.status = status
     this.code = code
     this.publicMessage = publicMessage
+    this.extra = extra
+  }
+}
+
+// Rate limits, counted from api_log: per account when signed in, else per hashed IP.
+async function enforceLimit(req, name, { hour, day }) {
+  const key = { route: name, ipHash: ipHash(req), userId: req._user?.id || null }
+  if (!key.userId && !key.ipHash) return
+  const tooMany = async (n, minutes) => n && (await recentRequests({ ...key, minutes })) >= n
+  if ((await tooMany(hour, 60)) || (await tooMany(day, 1440))) {
+    throw new ApiError(429, 'rate_limited', 'That’s a lot in a short time. Please wait a few minutes and try again.')
+  }
+}
+
+// Wrap a handler: method check, optional sign-in hook and rate limit, JSON errors
+// instead of bare 500s, and one log line + api_log row per request.
+//   route(['POST'], fn, { name: 'render', before: requireUser, limit: { hour: 300, day: 1500 } })
+export function route(methods, fn, opts = {}) {
+  return async (req, res) => {
+    const started = Date.now()
+    const name = opts.name || new URL(req.url, 'http://local').pathname.replace(/^\/api\//, '')
+    try {
+      if (!methods.includes(req.method)) throw new ApiError(405, 'method_not_allowed', `Use ${methods.join(' or ')}.`)
+      if (opts.before) await opts.before(req, res)
+      if (opts.limit) await enforceLimit(req, name, opts.limit)
+      await fn(req, res)
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 500
+      res._code = err.code || 'server_error'
+      if (!(err instanceof ApiError) || err.status >= 500) {
+        console.error(JSON.stringify({ t: 'error', route: name, err: String(err?.stack || err).slice(0, 1500) }))
+      }
+      if (!res.headersSent) {
+        send(res, status, { ok: false, error: res._code, message: err.publicMessage || 'Something went wrong on our side. Try again in a moment.', ...(err.extra || {}) })
+      }
+    } finally {
+      logRequest(req, { route: name, status: res.statusCode || 500, ms: Date.now() - started, code: res._code || null, meta: res._meta || null })
+    }
   }
 }
 

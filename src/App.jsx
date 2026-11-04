@@ -1,21 +1,30 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AuthModal, EmailGate, Nav } from './components/Chrome.jsx'
-import { I18n, translate } from './i18n.js'
+import { Component, lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { AuthModal, CookieBanner, Footer, Nav } from './components/Chrome.jsx'
+import { I18n, translate, useI18n } from './i18n.js'
+import { initAnalytics, pageView, reportError } from './lib/analytics.js'
+import { refresh } from './lib/auth.js'
 import Landing from './pages/Landing.jsx'
 import Own from './pages/Own.jsx'
 import Share from './pages/Share.jsx'
 import Studio from './pages/Studio.jsx'
 import { Link, Router, match, useRouter } from './router.jsx'
 
+// Pages most visitors never open load on demand.
+const Account = lazy(() => import('./pages/Account.jsx'))
+const Admin = lazy(() => import('./pages/Admin.jsx'))
+const Legal = lazy(() => import('./pages/Legal.jsx'))
+const PrivacyRequest = lazy(() => import('./pages/PrivacyRequest.jsx'))
+const Reset = lazy(() => import('./pages/Reset.jsx'))
+
 function initialLang() {
+  const q = new URLSearchParams(window.location.search).get('lang')
+  if (q === 'zh' || q === 'en') return q
   try {
     const saved = localStorage.getItem('ss:lang')
     if (saved === 'en' || saved === 'zh') return saved
   } catch {
     /* ignore */
   }
-  const q = new URLSearchParams(window.location.search).get('lang')
-  if (q === 'zh' || q === 'en') return q
   return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'
 }
 
@@ -29,54 +38,112 @@ function loadCjkFonts() {
   document.head.appendChild(l)
 }
 
-function Pages() {
-  const { path } = useRouter()
-  const [auth, setAuth] = useState(false)
-  const m = match(path)
-  return (
-    <>
-      <a href="#main" className="skip">
-        Skip to content
-      </a>
-      <Nav tone={m.page === 'home' ? 'dark' : 'light'} onSignIn={() => setAuth(true)} />
-      {m.page === 'home' && <Landing />}
-      {m.page === 'own' && <Own />}
-      {m.page === 'studio' && <Studio key={m.id} id={m.id} />}
-      {m.page === 'share' && <Share key={m.id} id={m.id} />}
-      {m.page === 'notfound' && <NotFound />}
-      <Footer />
-      <EmailGate />
-      {auth && <AuthModal onClose={() => setAuth(false)} />}
-    </>
-  )
+// A crash in one page shows a calm message (and is reported), never a white screen.
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+  componentDidCatch(error, info) {
+    reportError(error, { source: 'react', component: String(info?.componentStack || '').slice(0, 800) })
+  }
+  componentDidUpdate(prev) {
+    if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null })
+  }
+  render() {
+    if (!this.state.error) return this.props.children
+    return <Crash />
+  }
 }
 
-function NotFound() {
+function Crash() {
+  const { t } = useI18n()
   return (
-    <main id="main" className="studio studio--empty">
-      <p>Page not found.</p>
-      <Link to="/" className="btn btn--glow">
-        Sceneshare
-      </Link>
+    <main id="main" className="page page--center">
+      <h1 className="page__title">{t('crash.title')}</h1>
+      <p>{t('crash.body')}</p>
+      <p className="page__actions">
+        <button type="button" className="btn btn--glow" onClick={() => window.location.reload()}>
+          {t('crash.reload')}
+        </button>
+        <a className="btn btn--quiet" href="/">
+          {t('crash.home')}
+        </a>
+      </p>
     </main>
   )
 }
 
-function Footer() {
+function NotFound() {
+  const { t } = useI18n()
+  useEffect(() => {
+    document.title = `${t('notfound.title')} — Sceneshare`
+  }, [t])
   return (
-    <I18n.Consumer>
-      {({ t }) => (
-        <footer className="foot">
-          <p className="foot__made">{t('foot.made')}</p>
-          <p className="foot__fine">{t('foot.disclaimer')}</p>
-        </footer>
-      )}
-    </I18n.Consumer>
+    <main id="main" className="page page--center">
+      <p className="page__eyebrow">404</p>
+      <h1 className="page__title">{t('notfound.title')}</h1>
+      <p>{t('notfound.body')}</p>
+      <p className="page__actions">
+        <Link to="/" className="btn btn--glow">
+          {t('notfound.home')}
+        </Link>
+      </p>
+    </main>
+  )
+}
+
+const Loading = () => (
+  <main id="main" className="page page--center">
+    <span className="spinner" aria-hidden="true" />
+  </main>
+)
+
+function Pages() {
+  const { path } = useRouter()
+  const { t } = useI18n()
+  const m = match(path)
+  useEffect(() => {
+    if (!['share', 'studio'].includes(m.page)) document.title = m.page === 'home' ? t('meta.title') : `${t(`meta.${m.page === 'legal' ? m.doc : m.page}`)} — Sceneshare`
+    const id = setTimeout(() => pageView(path), 50) // after the page sets its own title
+    return () => clearTimeout(id)
+  }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <>
+      <a href="#main" className="skip">
+        {t('skip')}
+      </a>
+      <Nav tone={m.page === 'home' ? 'dark' : 'light'} />
+      <ErrorBoundary resetKey={path}>
+        <Suspense fallback={<Loading />}>
+          {m.page === 'home' && <Landing />}
+          {m.page === 'own' && <Own />}
+          {m.page === 'studio' && <Studio key={m.id} id={m.id} />}
+          {m.page === 'share' && <Share key={m.id} id={m.id} />}
+          {m.page === 'account' && <Account />}
+          {m.page === 'admin' && <Admin />}
+          {m.page === 'reset' && <Reset />}
+          {m.page === 'legal' && <Legal key={m.doc} doc={m.doc} />}
+          {m.page === 'privacyRequest' && <PrivacyRequest />}
+          {m.page === 'notfound' && <NotFound />}
+        </Suspense>
+      </ErrorBoundary>
+      <Footer />
+      <AuthModal />
+      <CookieBanner />
+    </>
   )
 }
 
 export default function App() {
   const [lang, setLangState] = useState(initialLang)
+  useEffect(() => {
+    initAnalytics()
+    refresh()
+  }, [])
   useEffect(() => {
     document.documentElement.lang = lang === 'zh' ? 'zh-Hans' : 'en'
     document.documentElement.dataset.lang = lang

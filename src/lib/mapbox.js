@@ -1,4 +1,5 @@
 import { health } from './api.js'
+import { iconSvg } from './poiIcons.js'
 
 // Mapbox GL JS, loaded on demand (its own chunk) the first time a map is about to
 // show. The public token comes from /api/health, so changing it in Vercel needs no
@@ -48,10 +49,16 @@ export function whenVisible(el, cb) {
 }
 
 // Small DOM helpers for markers and popups — text goes in as text, never as HTML.
-export function pinElement(className) {
+export function pinElement(className, kind = null, label = '') {
   const el = document.createElement('div')
   el.className = className
-  el.appendChild(document.createElement('span'))
+  const inner = document.createElement('span')
+  if (kind) inner.appendChild(iconSvg(kind, kind === 'home' ? 18 : 15))
+  el.appendChild(inner)
+  if (label) {
+    el.setAttribute('role', 'img')
+    el.setAttribute('aria-label', label)
+  }
   return el
 }
 

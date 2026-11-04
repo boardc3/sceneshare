@@ -1,12 +1,14 @@
-import { logSubmission, saveRender } from './_lib/db.js'
-import { newId, requireEmail } from './_lib/gate.js'
+import { normalizeProperty, addVersion } from '../shared/model.js'
+import { logSubmission, mutateProperty, saveRender, upsertDesign } from './_lib/db.js'
+import { newId, requireOwner, requireUser } from './_lib/gate.js'
 import { generateImage } from './_lib/gemini.js'
 import { ApiError, readJson, route, send } from './_lib/http.js'
 import { alignmentScore } from './_lib/align.js'
 import { fitTo, nearestRatio, normalize, outputSize } from './_lib/images.js'
-import { buildFeedbackPrompt, buildRenderPrompt, LIGHT_KEYS, RETRY_PREFIX, STYLE_KEYS } from './_lib/prompts.js'
+import { buildFeedbackPrompt, buildRenderPrompt, RETRY_PREFIX } from './_lib/prompts.js'
+import { background } from './_lib/log.js'
 import { loadImageInput } from './_lib/source.js'
-import { storeImage, toDataUrl } from './_lib/storage.js'
+import { storeImage } from './_lib/storage.js'
 
 export const maxDuration = 300
 
@@ -14,81 +16,102 @@ export const maxDuration = 300
 // restyle 0.42, drifted takes 0.25-0.28, 2% camera shift 0.39, 12% zoom-out 0.03.
 const ALIGN_MIN = 0.32
 
-// One render: redesign, polish (relight + photo finish only) or a feedback edit.
-// Always Nano Banana Flash, always the source photograph as reference 1, always
-// delivered at the source's exact aspect ratio.
-export default route(['POST'], async (req, res) => {
-  const body = await readJson(req)
-  const email = requireEmail(body)
-  const mode = ['redesign', 'polish', 'feedback'].includes(body.mode) ? body.mode : 'redesign'
-  const style = STYLE_KEYS.includes(body.style) ? body.style : 'signature'
-  const light = LIGHT_KEYS.includes(body.light) ? body.light : 'daylight'
-  const feedback = String(body.feedback || '').trim()
-  if (mode === 'feedback' && !feedback) throw new ApiError(400, 'feedback_required', 'Describe the change you want.')
+// One photo of one design: the design's restyle (or relight), or a change request
+// on the design's current image. The photo and the design are read from the saved
+// home — never from the request — so only the owner's own photos are ever sent to
+// the model. Always the source photograph as reference 1, always delivered at the
+// source's exact aspect ratio, and saved into the design as it lands.
+export default route(
+  ['POST'],
+  async (req, res) => {
+    const body = await readJson(req)
+    const { user, row } = await requireOwner(req, res, body.propertyId)
+    const p = normalizeProperty(row.data)
+    const photo = p.photos.find((x) => x.id === body.photoId)
+    if (!photo) throw new ApiError(404, 'photo_missing', 'That photo is no longer part of this home.')
+    const design = p.designs.find((d) => d.id === body.designId)
+    if (!design) throw new ApiError(404, 'design_missing', 'That design was removed.')
+    const feedback = String(body.feedback || '').trim().slice(0, 800)
+    res._meta = { propertyId: p.id, designId: design.id, photoId: photo.id, kind: feedback ? 'feedback' : design.mode }
 
-  const started = Date.now()
-  const source = await normalize(await loadImageInput(body.source), 2048)
-  const images = [{ buffer: source.buffer, mimeType: 'image/jpeg' }]
-  let prompt
-  if (mode === 'feedback') {
-    if (!body.current) throw new ApiError(400, 'current_required', 'Make a first version before asking for changes.')
-    const current = await normalize(await loadImageInput(body.current), 2048)
-    images.push({ buffer: current.buffer, mimeType: 'image/jpeg' })
-    prompt = buildFeedbackPrompt({ feedback, light: body.light ? light : 'original' })
-  } else {
-    prompt = buildRenderPrompt({ mode, style, light, note: String(body.note || '').trim() })
-  }
-
-  // Generate, then overlay-check against the source. A take whose camera or walls
-  // drifted is refired once with a stronger lock; the better-aligned take is kept.
-  const aspectRatio = nearestRatio(source.width, source.height)
-  let out = await generateImage({ prompt, images, aspectRatio })
-  let score = await alignmentScore(source.buffer, source.width, source.height, out.buffer).catch(() => 1)
-  let attempts = 1
-  if (score < ALIGN_MIN && Date.now() - started < 120000) {
-    try {
-      const again = await generateImage({ prompt: RETRY_PREFIX + prompt, images, aspectRatio })
-      const s2 = await alignmentScore(source.buffer, source.width, source.height, again.buffer).catch(() => 0)
-      attempts = 2
-      if (s2 > score) {
-        out = again
-        score = s2
-      }
-    } catch {
-      /* keep the first take */
+    let base = null
+    if (feedback) {
+      base = photo.versions.find((v) => v.id === (body.baseVersionId || design.picks[photo.id]))
+      if (!base) throw new ApiError(400, 'current_required', 'Restyle this photo before asking for changes.')
     }
-  }
-  const size = outputSize(source.width, source.height)
-  const fitted = await fitTo(out.buffer, size.width, size.height)
-  const propertyId = /^[a-z0-9]{6,20}$/.test(body.propertyId || '') ? body.propertyId : 'loose'
-  const photoId = /^[a-z0-9]{4,12}$/.test(body.photoId || '') ? body.photoId : null
-  const versionId = newId(8)
-  const stored = await storeImage(fitted.buffer, { propertyId, kind: `render-${versionId}` })
 
-  await logSubmission({
-    email,
-    kind: mode === 'feedback' ? 'feedback' : 'render',
-    propertyId,
-    lang: body.lang,
-    address: body.addressText || null,
-    meta: { versionId, photoId, mode, style, light, feedback: feedback || undefined, ms: Date.now() - started, model: out.model, align: Number(score.toFixed(3)), attempts },
-  })
+    const started = Date.now()
+    const source = await normalize(await loadImageInput(photo.src), 2048)
+    const images = [{ buffer: source.buffer, mimeType: 'image/jpeg' }]
+    let prompt
+    if (base) {
+      const current = await normalize(await loadImageInput(base.src), 2048)
+      images.push({ buffer: current.buffer, mimeType: 'image/jpeg' })
+      prompt = buildFeedbackPrompt({ feedback, light: 'original' })
+    } else {
+      prompt = buildRenderPrompt({ mode: design.mode, style: design.style, light: design.light, note: design.note || '' })
+    }
 
-  const version = {
-    id: versionId,
-    src: stored || toDataUrl(fitted.buffer),
-    width: fitted.width,
-    height: fitted.height,
-    mode,
-    style: mode === 'redesign' ? style : null,
-    light,
-    feedback: feedback || null,
-    model: out.model,
-    align: Number(score.toFixed(3)),
-    attempts,
-    ms: Date.now() - started,
-    at: new Date().toISOString(),
-  }
-  if (stored) await saveRender(version, { propertyId, photoId, email, note: String(body.note || '').trim() || null, lang: body.lang })
-  send(res, 200, { ok: true, version })
-})
+    // Generate, then overlay-check against the source. A take whose camera or walls
+    // drifted is refired once with a stronger lock; the better-aligned take is kept.
+    const aspectRatio = nearestRatio(source.width, source.height)
+    let out = await generateImage({ prompt, images, aspectRatio, deadline: started + 200000 })
+    let score = await alignmentScore(source.buffer, source.width, source.height, out.buffer).catch(() => 1)
+    let attempts = 1
+    if (score < ALIGN_MIN && Date.now() - started < 120000) {
+      try {
+        const again = await generateImage({ prompt: RETRY_PREFIX + prompt, images, aspectRatio, deadline: started + 250000 })
+        const s2 = await alignmentScore(source.buffer, source.width, source.height, again.buffer).catch(() => 0)
+        attempts = 2
+        if (s2 > score) {
+          out = again
+          score = s2
+        }
+      } catch {
+        /* keep the first take */
+      }
+    }
+    const size = outputSize(source.width, source.height)
+    const fitted = await fitTo(out.buffer, size.width, size.height)
+    const versionId = newId(8)
+    const stored = await storeImage(fitted.buffer, { propertyId: p.id, kind: `render-${versionId}` })
+    if (!stored) throw new ApiError(503, 'storage_not_configured', 'Image storage is not set up yet.')
+
+    const version = {
+      id: versionId,
+      designId: design.id,
+      baseVersionId: base?.id || null,
+      src: stored,
+      width: fitted.width,
+      height: fitted.height,
+      mode: base ? 'feedback' : design.mode,
+      style: design.mode === 'redesign' ? design.style : null,
+      light: design.light,
+      feedback: feedback || null,
+      model: out.model,
+      align: Number(score.toFixed(3)),
+      attempts,
+      ms: Date.now() - started,
+      at: new Date().toISOString(),
+    }
+
+    const next = await mutateProperty(p.id, (cur) => (cur.designs.some((d) => d.id === design.id) ? addVersion(cur, photo.id, version) : false))
+    const saved = next?.designs.find((d) => d.id === design.id)
+    if (!saved) throw new ApiError(409, 'design_missing', 'That design was removed while this photo was rendering.')
+    await saveRender(version, { propertyId: p.id, photoId: photo.id, user, note: design.note || null, lang: body.lang })
+    background(upsertDesign(saved, { propertyId: p.id, user }))
+    background(
+      logSubmission({
+        user,
+        kind: base ? 'feedback' : 'render',
+        propertyId: p.id,
+        lang: body.lang,
+        address: p.address?.formatted || null,
+        meta: { versionId, designId: design.id, photoId: photo.id, mode: version.mode, style: version.style, light: version.light, feedback: feedback || undefined, ms: version.ms, model: out.model, align: version.align, attempts },
+      }),
+    )
+    res._meta = { ...res._meta, versionId, ms: version.ms, align: version.align, attempts, model: out.model }
+    send(res, 200, { ok: true, version, design: saved })
+  },
+  { name: 'render', before: requireUser, limit: { hour: 400, day: 1500 } },
+)

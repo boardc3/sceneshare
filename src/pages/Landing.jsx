@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import AddressSearch from '../components/AddressSearch.jsx'
 import Compare from '../components/Compare.jsx'
 import HeroMap from '../components/HeroMap.jsx'
 import { useI18n } from '../i18n.js'
-import { cacheProperty, submit } from '../lib/api.js'
+import { track } from '../lib/analytics.js'
+import { post, rememberProperty } from '../lib/api.js'
+import { requireSignIn, takeIntent, useAuth } from '../lib/auth.js'
 import { Link, useRouter } from '../router.jsx'
 import { DEMO } from '../demoMedia.js'
 
@@ -14,21 +16,47 @@ export default function Landing() {
   const [error, setError] = useState('')
   const [target, setTarget] = useState(null)
 
-  const onFind = async ({ address, placeId }) => {
-    setError('')
-    setBusy(true)
-    try {
-      const d = await submit('/api/property', { address, placeId, lang }, 'address_search')
-      if (!d) return
-      cacheProperty(d.property)
-      setTarget(d.property.address)
-      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-      setTimeout(() => navigate(`/studio/${d.property.id}`), reduce ? 200 : 2300)
-    } catch (e) {
-      setError(e.message || (e.code === 'network' ? t('err.network') : t('err.generic')))
-      setBusy(false)
-    }
+  const { ready, user } = useAuth()
+  const resumed = useRef(false)
+
+  // Searching saves the home to an account, so it needs one (Chris, 2026-11-04).
+  const onFind = useCallback(
+    async ({ address, placeId }) => {
+      setError('')
+      track('address_search_start', { signedIn: false })
+      const user = await requireSignIn('search', { type: 'search', address, placeId })
+      if (!user) return
+      setBusy(true)
+      try {
+        const d = await post('/api/property', { address, placeId, lang })
+        rememberProperty(d.property)
+        track('address_search', { county: d.property.address?.county || null, parcel: Boolean(d.property.parcel) }, { propertyId: d.property.id })
+        setTarget(d.property.address)
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        setTimeout(() => navigate(`/studio/${d.property.id}`), reduce ? 200 : 2300)
+      } catch (e) {
+        track('address_search_failed', { code: e.code })
+        setError(e.message || (e.code === 'network' ? t('err.network') : t('err.generic')))
+        setBusy(false)
+      }
+    },
+    [lang, navigate, t],
+  )
+
+  const startOwn = async (e) => {
+    e.preventDefault()
+    const user = await requireSignIn('own', { type: 'own' })
+    if (user) navigate('/studio/new')
   }
+
+  // Back from Google sign-in: carry on with what the visitor was doing.
+  useEffect(() => {
+    if (!ready || resumed.current) return
+    resumed.current = true
+    const intent = user ? takeIntent() : null
+    if (intent?.type === 'search' && intent.address) onFind({ address: intent.address, placeId: intent.placeId })
+    if (intent?.type === 'own') navigate('/studio/new')
+  }, [ready, user, onFind, navigate])
 
   return (
     <main id="main">
@@ -44,7 +72,7 @@ export default function Landing() {
               {error}
             </p>
           )}
-          <Link to="/studio/new" className="hero__own">
+          <Link to="/studio/new" className="hero__own" onClick={startOwn}>
             {t('hero.own')}
           </Link>
         </div>
@@ -67,7 +95,8 @@ export default function Landing() {
               beforeLabel={t('demo.before')}
               afterLabel={t('demo.after')}
               alt={t('demo.title')}
-              start={38}
+              start={50}
+              intro
             />
           ) : (
             <div className="demo__empty">{t('demo.placeholder')}</div>

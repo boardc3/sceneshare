@@ -17,3 +17,6 @@ dist
 
 # local working files
 /_work/
+
+# local preview data (npm run dev:demo)
+/.data/

@@ -3,7 +3,7 @@ import { ApiError, fetchWithTimeout } from './http.js'
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 
-async function call(model, parts, imageConfig) {
+async function call(model, parts, imageConfig, ms) {
   return fetchWithTimeout(
     `${BASE}/${model}:generateContent`,
     {
@@ -14,12 +14,14 @@ async function call(model, parts, imageConfig) {
         generationConfig: { responseModalities: ['IMAGE'], imageConfig },
       }),
     },
-    150000,
+    ms,
   )
 }
 
 // images: [{ buffer, mimeType }] in reference order; the prompt names them.
-export async function generateImage({ prompt, images, aspectRatio }) {
+// Up to two attempts on each of two model ids, inside one overall deadline so a
+// render always answers before the function's 300 s limit.
+export async function generateImage({ prompt, images, aspectRatio, deadline = Date.now() + 230000 }) {
   if (!config.geminiKey) throw new ApiError(503, 'render_not_configured', 'Rendering is not set up yet. Add GOOGLE_API_KEY in Vercel.')
   const parts = [{ text: prompt }, ...images.map((im) => ({ inline_data: { mime_type: im.mimeType || 'image/jpeg', data: im.buffer.toString('base64') } }))]
   const imageConfig = { aspectRatio, imageSize: config.imageSize }
@@ -28,11 +30,14 @@ export async function generateImage({ prompt, images, aspectRatio }) {
   let last = null
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
+      const left = deadline - Date.now()
+      if (left < 25000) break
       let r
       try {
-        r = await call(model, parts, imageConfig)
+        r = await call(model, parts, imageConfig, Math.min(120000, left))
       } catch (e) {
         last = { status: 0, text: e.name === 'AbortError' ? 'timeout' : e.message }
+        console.warn(JSON.stringify({ t: 'gemini', msg: 'call failed', model, attempt, err: last.text }))
         continue // a hang is refired once, never waited on (runbook 04)
       }
       if (r.ok) {
@@ -46,12 +51,13 @@ export async function generateImage({ prompt, images, aspectRatio }) {
           throw new ApiError(422, 'render_blocked', 'The image model declined this photo. Try a different photo or reword your note.')
         }
         last = { status: 200, text: reason }
+        console.warn(JSON.stringify({ t: 'gemini', msg: 'no image', model, attempt, reason }))
         continue
       }
       const text = await r.text()
       last = { status: r.status, text: text.slice(0, 300) }
       if (r.status === 402 || (r.status === 403 && /billing|credit|prepay/i.test(text))) {
-        console.error('[gemini] billing', text.slice(0, 300))
+        console.error(JSON.stringify({ t: 'gemini', msg: 'billing', model, detail: text.slice(0, 300) }))
         throw new ApiError(503, 'render_billing', 'Restyling is paused: the image model account is out of credits. Try again later.')
       }
       if (r.status === 404 || r.status === 400) break // wrong model id or unsupported config → next model
@@ -59,7 +65,7 @@ export async function generateImage({ prompt, images, aspectRatio }) {
       else break
     }
   }
-  console.error('[gemini] failed', last)
+  console.error(JSON.stringify({ t: 'gemini', msg: 'failed', last }))
   if (last?.status === 429) throw new ApiError(429, 'render_busy', 'The image model is busy. Wait a few seconds and try again.')
   throw new ApiError(502, 'render_failed', 'The render did not come back. Try again — it usually works on the second attempt.')
 }
