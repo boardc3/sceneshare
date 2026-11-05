@@ -259,11 +259,11 @@ export default function Studio({ id }) {
     }
   }
 
-  const locate = async ({ address, placeId }) => {
+  const locate = async ({ address, placeId, unit }) => {
     setLocating(true)
     setError('')
     try {
-      await post('/api/property', { address, placeId, lang, propertyId: id })
+      await post('/api/property', { address, placeId, unit, lang, propertyId: id })
       track('own_locate', null, { propertyId: id })
       setListing('idle')
       await load()

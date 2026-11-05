@@ -21,14 +21,14 @@ export default function Landing() {
 
   // Searching saves the home to an account, so it needs one (Chris, 2026-11-04).
   const onFind = useCallback(
-    async ({ address, placeId }) => {
+    async ({ address, placeId, unit }) => {
       setError('')
-      track('address_search_start', { signedIn: false })
-      const user = await requireSignIn('search', { type: 'search', address, placeId })
+      track('address_search_start', { signedIn: false, unit: Boolean(unit) })
+      const user = await requireSignIn('search', { type: 'search', address, placeId, unit })
       if (!user) return
       setBusy(true)
       try {
-        const d = await post('/api/property', { address, placeId, lang })
+        const d = await post('/api/property', { address, placeId, unit, lang })
         rememberProperty(d.property)
         track('address_search', { county: d.property.address?.county || null, parcel: Boolean(d.property.parcel) }, { propertyId: d.property.id })
         setTarget(d.property.address)
@@ -54,7 +54,7 @@ export default function Landing() {
     if (!ready || resumed.current) return
     resumed.current = true
     const intent = user ? takeIntent() : null
-    if (intent?.type === 'search' && intent.address) onFind({ address: intent.address, placeId: intent.placeId })
+    if (intent?.type === 'search' && intent.address) onFind({ address: intent.address, placeId: intent.placeId, unit: intent.unit })
     if (intent?.type === 'own') navigate('/studio/new')
   }, [ready, user, onFind, navigate])
 

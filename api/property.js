@@ -1,7 +1,7 @@
 import { assertCanAddHome } from './_lib/billing.js'
 import { createOwnProperty, logSubmission, upsertProperty } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
-import { geocode, nearby } from './_lib/mapbox.js'
+import { geocode, nearby, withUnit } from './_lib/mapbox.js'
 import { ApiError, readJson, route, send } from './_lib/http.js'
 import { parcelFor } from './_lib/parcel.js'
 
@@ -31,7 +31,9 @@ export default route(
     if (existing) await requireOwner(req, res, existing)
     else await assertCanAddHome(user)
 
-    const addr = await geocode({ address, lang })
+    const unit = String(body.unit || '').replace(/[^A-Za-z0-9 #-]/g, '').replace(/^#/, '').trim().slice(0, 10)
+    const found = await geocode({ address, lang })
+    const addr = found && unit ? withUnit(found, unit) : found
     if (!addr) throw new ApiError(404, 'address_not_found', 'We could not find that address. Check the spelling and include the city and state.')
     if (!addr.streetNumber) {
       throw new ApiError(422, 'not_a_street_address', 'That looks like an area, not a single home. Enter a full street address with a house number.')

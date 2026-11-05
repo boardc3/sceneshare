@@ -22,6 +22,35 @@ export async function findZpid(addr) {
   }
 }
 
+// Units Zillow knows at one street address ("1400 Mission St #1303 …"). Zillow's
+// suggestions stop at 12 per query, so a building is read with a few prefixed
+// queries in parallel (#1 … #9): a 96-unit tower came back whole this way.
+export async function unitsAt({ streetNumber, route, city, state, zip }) {
+  const base = `${streetNumber} ${route}`.trim()
+  const tail = `, ${city || ''}, ${state || ''} ${zip || ''}`.replace(/\s+/g, ' ').trim()
+  const street = String(route || '').split(/\s+/)[0]?.toLowerCase() || ''
+  const queries = [`${base}${tail}`, ...['1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'PH'].map((p) => `${base} #${p}${tail}`)]
+  const lists = await Promise.all(
+    queries.map(async (text) => {
+      try {
+        const q = new URLSearchParams({ q: text, resultTypes: 'allAddress', resultCount: '12' })
+        const r = await fetchWithTimeout(`https://www.zillowstatic.com/autocomplete/v3/suggestions?${q}`, { headers: { 'User-Agent': UA } }, 8000)
+        if (!r.ok) return []
+        return ((await r.json()).results || []).map((x) => x.display || '')
+      } catch {
+        return []
+      }
+    }),
+  )
+  const out = new Set()
+  for (const display of lists.flat()) {
+    if (!sameStreetNumber(display, streetNumber) || (street && !display.toLowerCase().includes(street))) continue
+    const m = /(?:#|\b(?:apt|unit|ste|suite)\.?\s*#?)\s*([A-Za-z0-9-]{1,8})\b/i.exec(display)
+    if (m) out.add(m[1].toUpperCase())
+  }
+  return [...out]
+}
+
 const sameStreetNumber = (display = '', num = '') => !!num && display.trim().split(/\s+/)[0] === String(num)
 
 function parseGdp(html, zpid) {

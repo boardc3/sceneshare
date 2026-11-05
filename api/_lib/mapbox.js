@@ -63,6 +63,31 @@ async function forward(q, { autocomplete, limit, lang, permanent = false }) {
   return d.features || []
 }
 
+// Units Mapbox knows at a building (secondary addresses), where it has them.
+export async function unitsNear(addressText, lang = 'en') {
+  try {
+    needToken()
+    const params = new URLSearchParams({ q: `${addressText} unit`, access_token: config.mapboxToken, country: 'us', types: 'secondary_address', autocomplete: 'true', limit: '10', language: mbLang(lang) })
+    const r = await fetchWithTimeout(`${GEOCODE}?${params}`, {}, 8000)
+    if (!r.ok) return []
+    const d = await r.json()
+    return (d.features || []).map((f) => f.properties?.context?.secondary_address?.name || '').map((n) => unitFrom(n) || n).filter((u) => /^[A-Za-z0-9-]{1,8}$/.test(u)).map((u) => u.toUpperCase())
+  } catch {
+    return []
+  }
+}
+
+// Put a chosen unit on a geocoded address ("123 Main St #4B, City, ST 92651").
+export function withUnit(addr, unit) {
+  const u = String(unit || '').replace(/^#/, '').trim().toUpperCase()
+  if (!u) return addr
+  const street = `${addr.streetNumber} ${addr.route}`.trim()
+  const rest = addr.formatted.includes(',') ? addr.formatted.slice(addr.formatted.indexOf(',')) : `, ${addr.city}, ${addr.state} ${addr.zip}`
+  const out = { ...addr, unit: u, formatted: `${street} #${u}${rest}` }
+  out.oneLine = `${out.streetNumber} ${out.route} #${u}, ${out.city}, ${out.state} ${out.zip}`.trim()
+  return out
+}
+
 export async function autocomplete(input, lang = 'en') {
   const feats = await forward(input, { autocomplete: true, limit: 6, lang })
   return feats.map((f) => {

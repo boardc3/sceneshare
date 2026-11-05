@@ -106,6 +106,8 @@ globalThis.fetch = async (url, opts) => {
     if (url instanceof Request) opts = { method: url.method, headers: url.headers, body: url.method === 'GET' ? undefined : await url.text() }
     return fakeAuth(u, opts)
   }
+  // Unit lookups ("123 Main St #4…") go to the real Zillow suggestions, which need no key.
+  if (simulate.scraper && u.hostname === 'www.zillowstatic.com' && /#/.test(u.searchParams.get('q') || '')) return realFetch(url, opts)
   if (simulate.scraper && u.hostname === 'www.zillowstatic.com') return json({ results: [{ display: 'Demo listing', metaData: { zpid: 999 } }] })
   if (simulate.scraper && u.hostname === 'api.scraperapi.com' && u.pathname.includes('structured/google')) return json({ organic_results: [] })
   if (simulate.scraper && u.hostname === 'api.scraperapi.com') return new Response(listingPage, { headers: { 'content-type': 'text/html' } })
