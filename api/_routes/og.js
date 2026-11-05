@@ -1,6 +1,7 @@
 import sharp from 'sharp'
 import { normalizeProperty, versionFor, visiblePhotos } from '../../shared/model.js'
-import { propertyRow } from '../_lib/db.js'
+import { TERMS_VERSION } from '../_lib/config.js'
+import { ownerAccepted, propertyRow } from '../_lib/db.js'
 import { validId } from '../_lib/gate.js'
 import { ApiError, query, route } from '../_lib/http.js'
 import { loadImageInput } from '../_lib/source.js'
@@ -18,6 +19,7 @@ export default route(
     if (!validId(id)) throw new ApiError(400, 'bad_id', 'Unknown home.')
     const row = await propertyRow(id)
     if (!row) throw new ApiError(404, 'not_found', 'This home is no longer shared.')
+    if (!ownerAccepted(row, TERMS_VERSION)) throw new ApiError(404, 'not_available', 'This home is not shared yet.')
     const p = normalizeProperty(row.data)
     const photos = visiblePhotos(p)
     if (!photos.length) throw new ApiError(404, 'no_photos', 'This home has no photos yet.')

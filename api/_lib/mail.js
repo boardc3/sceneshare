@@ -46,3 +46,33 @@ export async function sendShareEmail({ to, replyTo, senderName, message, url, ad
     return false
   }
 }
+
+// To an owner whose home someone tried to open before the owner accepted the Terms.
+export async function sendTermsRequestEmail({ to, ownerName, address, acceptUrl, requesterEmail = null }) {
+  const who = requesterEmail ? esc(requesterEmail) : 'Someone'
+  const subject = `${requesterEmail || 'Someone'} wants to see ${address || 'your home'} on Sceneshare`
+  const html = `<div style="font-family:Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#16212b">
+  <p style="font-size:16px;line-height:1.5">Hi${ownerName ? ` ${esc(ownerName)}` : ''},</p>
+  <p style="font-size:16px;line-height:1.5">${who} opened the link you shared for <strong>${esc(address || 'your home')}</strong>, but it isn’t visible yet.</p>
+  <p style="font-size:16px;line-height:1.5">Before Sceneshare can show any home you share, please confirm once that you have the rights or permission to share it, and accept our Terms of Service. It takes a few seconds and covers every home you share.</p>
+  <p><a href="${esc(acceptUrl)}" style="display:inline-block;background:#e8a548;color:#16212b;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:600">Review and accept</a></p>
+  ${requesterEmail ? `<p style="font-size:14px;color:#56656c">You can reply to this email to reach ${esc(requesterEmail)}.</p>` : ''}
+  <p style="font-size:12px;color:#56656c">You received this because a home was shared from your Sceneshare account.</p></div>`
+  const text = `${requesterEmail || 'Someone'} opened the link you shared for ${address || 'your home'}, but it isn't visible yet.\n\nBefore Sceneshare can show any home you share, confirm once that you have the rights or permission to share it, and accept our Terms of Service:\n${acceptUrl}\n`
+  try {
+    const r = await fetchWithTimeout(
+      'https://api.resend.com/emails',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.mailKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: config.mailFrom, to: [to], subject, html, text, ...(requesterEmail ? { reply_to: requesterEmail } : {}) }),
+      },
+      15000,
+    )
+    if (!r.ok) console.error(JSON.stringify({ t: 'mail', msg: 'terms request send failed', status: r.status, detail: (await r.text()).slice(0, 300) }))
+    return r.ok
+  } catch (e) {
+    console.error(JSON.stringify({ t: 'mail', msg: 'terms request send failed', err: e.message }))
+    return false
+  }
+}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { consent, gpc, onConsent, setConsent, track } from '../lib/analytics.js'
-import { currentUser, onAuthRequest, requestReset, signInEmail, signInGoogle, signOut, signUpEmail, useAuth } from '../lib/auth.js'
+import { acceptTerms, currentUser, onAuthRequest, onTermsRequest, requestReset, signInEmail, signInGoogle, signOut, signUpEmail, useAuth } from '../lib/auth.js'
 import { post } from '../lib/api.js'
 import { homesLeft, loadBilling, useBilling } from '../lib/billing.js'
 import { isEmail } from '../lib/format.js'
@@ -125,6 +125,98 @@ function PlanBadge() {
       )}
       {(b.mode === 'preview' || b.mode === 'test') && <span className="planbadge__mode">{t(`plan.mode.${b.mode}.short`)}</span>}
     </Link>
+  )
+}
+
+// The one-time Terms of Service acceptance before sharing: the account confirms it
+// has the rights and/or permission to share, and accepts the Terms. Opened by
+// ensureTerms(), by the server answering terms_required, or by ?accept=terms.
+export function TermsPrompt() {
+  const { t } = useI18n()
+  const { user, terms } = useAuth()
+  const [req, setReq] = useState(null)
+  const [rights, setRights] = useState(false)
+  const [agree, setAgree] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(
+    () =>
+      onTermsRequest((r) => {
+        setRights(false)
+        setAgree(false)
+        setErr('')
+        setReq(r)
+        track('terms_prompt', { context: r.context })
+      }),
+    [],
+  )
+  useEffect(() => {
+    const on = () => !req && setReq({ context: 'server', resolve: () => {} })
+    window.addEventListener('ss:terms-required', on)
+    return () => window.removeEventListener('ss:terms-required', on)
+  }, [req])
+  // From the "please accept" email: /studio/<id>?accept=terms
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('accept') !== 'terms' || !user || terms?.accepted) return
+    setReq({ context: 'email', resolve: () => {} })
+    q.delete('accept')
+    window.history.replaceState(window.history.state, '', window.location.pathname + (q.toString() ? `?${q}` : ''))
+  }, [user?.id, terms?.accepted]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!req) return null
+  const close = (ok) => {
+    req.resolve(ok)
+    setReq(null)
+  }
+  const accept = async (e) => {
+    e.preventDefault()
+    if (!rights || !agree) return
+    setBusy(true)
+    setErr('')
+    try {
+      await acceptTerms(req.context)
+      setBusy(false)
+      close(true)
+    } catch (e2) {
+      setBusy(false)
+      setErr(e2.message || t('err.generic'))
+    }
+  }
+  return (
+    <Modal labelledBy="terms-h" onClose={() => close(false)}>
+      <p className="page__eyebrow">{t('terms.eyebrow')}</p>
+      <h2 id="terms-h">{t('terms.title')}</h2>
+      <p>{t('terms.body')}</p>
+      <form onSubmit={accept} className="terms__form">
+        <label className="check">
+          <input type="checkbox" checked={rights} onChange={(e) => setRights(e.target.checked)} />
+          <span>{t('terms.rights')}</span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+          <span>
+            {t('terms.agree')}{' '}
+            <a href="/terms#sharing" target="_blank" rel="noreferrer">
+              {t('legal.terms')}
+            </a>{' '}
+            ·{' '}
+            <a href="/privacy" target="_blank" rel="noreferrer">
+              {t('legal.privacy')}
+            </a>
+          </span>
+        </label>
+        {err && <p className="field__error">{err}</p>}
+        <p className="fine">{t('terms.once')}</p>
+        <div className="dialog__actions">
+          <button type="submit" className="btn btn--glow" disabled={!rights || !agree || busy}>
+            {busy ? t('auth.working') : t('terms.accept')}
+          </button>
+          <button type="button" className="btn btn--quiet" onClick={() => close(false)}>
+            {t('plan.notNow')}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 

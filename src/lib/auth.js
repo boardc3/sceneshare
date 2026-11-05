@@ -5,7 +5,7 @@ import { track } from './analytics.js'
 import { get, post, setAuthRecovery } from './api.js'
 import { clearBilling, loadBilling } from './billing.js'
 
-const state = { ready: false, user: null, admin: false, accounts: true, claimed: 0, prefs: {} }
+const state = { ready: false, user: null, admin: false, accounts: true, claimed: 0, prefs: {}, terms: { accepted: false } }
 let snapshot = { ...state }
 const subs = new Set()
 function set(patch) {
@@ -37,7 +37,7 @@ export async function refresh() {
   }
   try {
     const d = await get('/api/account')
-    set({ ready: true, user: d.user, admin: !!d.admin, accounts: d.accounts !== false, claimed: d.claimed || 0, prefs: d.prefs || {} })
+    set({ ready: true, user: d.user, admin: !!d.admin, accounts: d.accounts !== false, claimed: d.claimed || 0, prefs: d.prefs || {}, terms: d.terms || { accepted: false } })
     if (d.user) loadBilling()
     else clearBilling()
     if (verifier && d.user) track('sign_in', { method: 'google' })
@@ -118,7 +118,7 @@ export const signOutOthers = () => call('revoke-other-sessions', {})
 export async function signOut() {
   await call('sign-out', {})
   track('sign_out')
-  set({ user: null, admin: false, claimed: 0 })
+  set({ user: null, admin: false, claimed: 0, terms: { accepted: false } })
   clearBilling()
 }
 
@@ -178,4 +178,27 @@ export async function requireSignIn(reason, intent = null) {
   const user = await openAuth({ mode: 'signup', reason, intent })
   if (user) takeIntent() // finished here, no redirect: the caller carries on itself
   return user
+}
+
+// ---- Terms of Service, accepted once per account before sharing.
+export async function acceptTerms(context = 'share') {
+  const d = await post('/api/account', { op: 'terms', accept: true, rights: true, context })
+  set({ terms: d.terms })
+  track('terms_accept', { context })
+  return d.terms
+}
+
+let termsOpener = null
+export const onTermsRequest = (fn) => ((termsOpener = fn), () => termsOpener === fn && (termsOpener = null))
+
+// Resolves true once the account has accepted (asking now if needed), false if declined.
+export async function ensureTerms(context = 'share') {
+  if (state.terms?.accepted) return true
+  if (!state.user) {
+    const u = await requireSignIn('share')
+    if (!u) return false
+    if (state.terms?.accepted) return true
+  }
+  if (!termsOpener) return false
+  return new Promise((resolve) => termsOpener({ context, resolve }))
 }

@@ -12,7 +12,7 @@ import SidePicker from '../components/SidePicker.jsx'
 import { creditText, useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { get, health, post, recalledProperty, retriable, shrinkPhoto, sleep } from '../lib/api.js'
-import { requireSignIn, useAuth } from '../lib/auth.js'
+import { ensureTerms, requireSignIn, useAuth } from '../lib/auth.js'
 import { defaultSides, designLabel, designName, sideImage, shortSideLabel } from '../lib/designs.js'
 import { lotSqft } from '../lib/format.js'
 import { useHouseRun } from '../lib/houseRun.js'
@@ -51,7 +51,7 @@ function Thumb({ src, width, height }) {
 export default function Studio({ id }) {
   const { t, lang } = useI18n()
   const { navigate } = useRouter()
-  const { user, ready } = useAuth()
+  const { user, ready, terms } = useAuth()
   const [property, setProperty] = useState(() => {
     const r = recalledProperty(id)
     return r ? normalizeProperty(r) : null
@@ -356,6 +356,14 @@ export default function Studio({ id }) {
           <ShareBar id={id} address={property.address?.formatted || ''} owner disabled={!property.address} onShared={() => setShared((n) => n + 1)} />
         </div>
       </header>
+      {property.address && !terms?.accepted && (
+        <p className="banner banner--warn">
+          {t('terms.hiddenOwner')}{' '}
+          <button type="button" className="linkbtn" onClick={() => ensureTerms('studio')}>
+            {t('terms.review')}
+          </button>
+        </p>
+      )}
       {property.address && <ShareStats id={id} refreshKey={shared} />}
 
       {property.facts && <Facts facts={property.facts} listing={property.listing} />}

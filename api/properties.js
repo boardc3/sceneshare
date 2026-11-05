@@ -1,8 +1,8 @@
 import { addDesign, normalizeProperty, publicView, removeDesign, removePhoto, setDesign, setHidden, pickVersion } from '../shared/model.js'
 import { sessionUser } from './_lib/auth.js'
 import { assertCanAddDesign } from './_lib/billing.js'
-import { config } from './_lib/config.js'
-import { deleteProperty, listProperties, logSubmission, mutateProperty, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
+import { config, TERMS_VERSION } from './_lib/config.js'
+import { deleteProperty, listProperties, logSubmission, mutateProperty, ownerAccepted, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
 import { ApiError, query, readJson, route, send } from './_lib/http.js'
 import { background, visitorId } from './_lib/log.js'
@@ -33,13 +33,21 @@ async function read(req, res) {
   if (!row) throw new ApiError(404, 'not_found', 'This home is no longer shared, or the link is wrong.')
   const user = await sessionUser(req, res)
   const owner = Boolean(user && (row.owner_user_id === user.id || (!row.owner_user_id && user.emailVerified && row.owner_email?.toLowerCase() === user.email)))
+  const accepted = ownerAccepted(row, TERMS_VERSION)
+  // Until its owner accepts the Terms, a home is not shown to anyone else: only who
+  // shared it, so the visitor can ask them (Chris, 2026-11-04).
+  if (!owner && !accepted) {
+    const email = row.owner_account_email || row.owner_email || null
+    res._meta = { propertyId: q.id, gated: true }
+    return send(res, 200, { ok: true, owner: false, gated: true, sharer: { name: row.owner_name || (email ? email.split('@')[0] : null), email } })
+  }
   const p = { ...normalizeProperty(row.data), updatedAt: row.updated_at, shareViews: row.share_views }
   if (!owner && q.view === '1') {
     const shareId = /^[a-z0-9]{10}$/.test(q.s || '') ? q.s : null
     background(recordView(q.id, { lang: q.lang === 'zh' ? 'zh' : 'en', req, visitorId: visitorId(req), shareId }))
   }
   res._meta = { propertyId: q.id, owner }
-  send(res, 200, { ok: true, owner, property: owner && q.full === '1' ? p : publicView(p) })
+  send(res, 200, { ok: true, owner, termsAccepted: accepted, property: owner && q.full === '1' ? p : publicView(p) })
 }
 
 const OPS = ['design.create', 'design.finish', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'photo.delete', 'property.rename', 'property.delete']

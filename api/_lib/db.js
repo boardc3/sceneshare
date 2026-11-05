@@ -213,6 +213,34 @@ async function migrate(s) {
   await s`alter table users add column if not exists email_verified boolean`
   await s`alter table users add column if not exists prefs jsonb`
   await s`alter table users drop constraint if exists users_email_key`
+  // Terms of Service: accepted once per account before sharing (Chris, 2026-11-04).
+  await s`alter table users add column if not exists terms_accepted_at timestamptz`
+  await s`alter table users add column if not exists terms_version text`
+  await s`create table if not exists terms_acceptances (
+    id bigserial primary key,
+    user_id text not null,
+    email text,
+    version text not null,
+    at timestamptz not null default now(),
+    ip_hash text,
+    user_agent text,
+    context text
+  )`
+  await s`create index if not exists terms_acceptances_user_idx on terms_acceptances (user_id, at desc)`
+  // A buyer on a not-yet-visible home asking its sharer to accept the Terms.
+  await s`create table if not exists terms_requests (
+    id text primary key,
+    at timestamptz not null default now(),
+    property_id text not null,
+    owner_user_id text,
+    owner_email text,
+    requester_email text,
+    visitor_id text,
+    ip_hash text,
+    share_id text,
+    emailed boolean not null default false
+  )`
+  await s`create index if not exists terms_requests_property_idx on terms_requests (property_id, at desc)`
   // Billing (see api/_lib/billing.js). One subscription per account.
   for (const col of ['plan text', 'plan_status text', 'plan_source text', 'plan_interval text', 'period_end timestamptz', 'cancel_at_period_end boolean', 'stripe_customer_id text', 'stripe_subscription_id text', 'plan_updated_at timestamptz']) {
     await s.query(`alter table users add column if not exists ${col}`)
@@ -300,7 +328,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 7
 
 async function upToDate(s) {
   try {
@@ -403,14 +431,14 @@ export async function touchUser(user) {
         email_verified = excluded.email_verified, last_seen_at = now()`
     await s`insert into leads (email, user_id, source, submissions) values (${user.email}, ${user.id}, 'account', 0)
       on conflict (email) do update set user_id = excluded.user_id, last_seen = now()`
-    const [row] = await s`select prefs from users where id = ${user.id}`
+    const [row] = await s`select prefs, terms_accepted_at, terms_version from users where id = ${user.id}`
     let claimed = 0
     if (user.emailVerified && user.email) {
       const rows = await s`update properties set owner_user_id = ${user.id}, updated_at = now()
         where owner_user_id is null and lower(owner_email) = ${user.email} returning id`
       claimed = rows.length
     }
-    return { claimed, prefs: row?.prefs || {} }
+    return { claimed, prefs: row?.prefs || {}, termsAt: row?.terms_accepted_at || null, termsVersion: row?.terms_version || null }
   })
   return r || { claimed: 0, prefs: {} }
 }
@@ -478,7 +506,9 @@ export async function createOwnProperty(id, { user, lang = null }) {
 export async function propertyRow(id) {
   const s = await ensure()
   if (!s) return null
-  const rows = await s`select id, owner_user_id, owner_email, rev, data, share_views, updated_at from properties where id = ${id}`
+  const rows = await s`select p.id, p.owner_user_id, p.owner_email, p.rev, p.data, p.share_views, p.updated_at,
+      u.terms_accepted_at as owner_terms_at, u.terms_version as owner_terms_version, u.name as owner_name, u.email as owner_account_email
+    from properties p left join users u on u.id = p.owner_user_id where p.id = ${id}`
   return rows[0] || null
 }
 
@@ -713,7 +743,8 @@ export async function exportUser(user) {
   const events = await s`select at, name, path, property_id, lang, country, props from events where user_id = ${user.id} order by at`
   const requests = await s`select id, at, kind, status from privacy_requests where user_id = ${user.id} or email = ${user.email}`
   const shares = await s`select id, property_id, channel, recipients, sender_name, message, opens, created_at from shares where user_id = ${user.id} order by created_at`
-  return { exportedAt: new Date().toISOString(), account: account || { id: user.id, email: user.email }, lead: lead[0] || null, properties, designs, renders, shares, submissions, events, privacyRequests: requests }
+  const terms = await s`select version, at, context from terms_acceptances where user_id = ${user.id} order by at`
+  return { termsAcceptances: terms, exportedAt: new Date().toISOString(), account: account || { id: user.id, email: user.email }, lead: lead[0] || null, properties, designs, renders, shares, submissions, events, privacyRequests: requests }
 }
 
 // "Delete my account": every home, image, design and render the account made, its
@@ -732,6 +763,8 @@ export async function deleteUserData(user) {
   await s`update api_log set user_id = null where user_id = ${user.id}`
   await s`delete from leads where email = ${user.email}`
   await s`update billing_events set user_id = null where user_id = ${user.id}`
+  await s`delete from terms_requests where owner_user_id = ${user.id}`
+  await s`delete from terms_acceptances where user_id = ${user.id}`
   await s`delete from users where id = ${user.id}`
   return { properties: props.length }
 }
@@ -787,6 +820,7 @@ export async function adminOverview() {
   const users = await s`select id, email, name, email_verified, created_at, last_seen_at, coalesce(plan, 'free') as plan, plan_source, plan_status, period_end from users order by created_at desc limit 40`
   const plans = await s`select coalesce(plan, 'free') as plan, coalesce(plan_source, '-') as source, coalesce(plan_status, '-') as status, count(*)::int as n from users group by 1, 2, 3 order by n desc`
   const billing = await s`select at, source, type, user_id, data from billing_events order by at desc limit 40`
+  const termsLog = await s`select at, 'accepted' as kind, email as who, version as detail from terms_acceptances union all select at, 'request' as kind, coalesce(requester_email, 'anonymous') as who, property_id || case when emailed then ' · emailed' else '' end as detail from terms_requests order by at desc limit 40`
   const properties = await s`select id, formatted_address, owner_email, origin, share_views, created_at, updated_at,
       jsonb_array_length(coalesce(data->'photos', '[]'::jsonb)) as photos, jsonb_array_length(coalesce(data->'designs', '[]'::jsonb)) as designs
     from properties order by updated_at desc limit 40`
@@ -794,7 +828,7 @@ export async function adminOverview() {
   const privacy = await s`select id, at, kind, email, status, details from privacy_requests order by at desc limit 30`
   const shares = await s`select sh.created_at, sh.property_id, p.formatted_address, sh.channel, sh.by_owner, sh.recipient_count, sh.sent, sh.opens
     from shares sh left join properties p on p.id = sh.property_id order by sh.created_at desc limit 40`
-  return { totals: { ...totals, visitors7d, pageViews7d }, topEvents, topPages, routes, errors, clientErrors, leads, users, plans, billing, properties, designs, privacy, shares }
+  return { totals: { ...totals, visitors7d, pageViews7d }, topEvents, topPages, routes, errors, clientErrors, leads, users, plans, billing, termsLog, properties, designs, privacy, shares }
 }
 
 // ---------------------------------------------------------------- billing
@@ -865,4 +899,34 @@ export async function usageFor(userId, propertyId = null) {
     out.emails = e?.n || 0
   }
   return out
+}
+
+// ---------------------------------------------------------------- terms
+
+export const ownerAccepted = (row, version) => Boolean(row?.owner_terms_at && row.owner_terms_version === version)
+
+export async function acceptTerms({ user, version, ipHash = null, userAgent = null, context = null }) {
+  const s = await ensure()
+  if (!s) return null
+  await s`insert into users (id, email, name, email_verified) values (${user.id}, ${user.email}, ${user.name || null}, ${user.emailVerified})
+    on conflict (id) do nothing`
+  const [row] = await s`update users set terms_accepted_at = now(), terms_version = ${version} where id = ${user.id} returning terms_accepted_at`
+  await s`insert into terms_acceptances (user_id, email, version, ip_hash, user_agent, context) values (${user.id}, ${user.email}, ${version}, ${ipHash}, ${userAgent ? String(userAgent).slice(0, 300) : null}, ${context})`
+  return row?.terms_accepted_at || null
+}
+
+export async function addTermsRequest(r) {
+  const s = await ensure()
+  if (!s) return
+  await s`insert into terms_requests (id, property_id, owner_user_id, owner_email, requester_email, visitor_id, ip_hash, share_id, emailed)
+    values (${r.id}, ${r.propertyId}, ${r.ownerUserId}, ${r.ownerEmail}, ${r.requesterEmail}, ${r.visitorId}, ${r.ipHash}, ${r.shareId}, ${r.emailed})`
+}
+
+// How many requests reached the owner's inbox for this home recently (one email an hour).
+export async function recentTermsEmails(propertyId, minutes = 60) {
+  const s = await ensure()
+  if (!s) return 0
+  const since = new Date(Date.now() - minutes * 60000).toISOString()
+  const [r] = await s`select count(*)::int as n from terms_requests where property_id = ${propertyId} and emailed and at > ${since}`
+  return r?.n || 0
 }

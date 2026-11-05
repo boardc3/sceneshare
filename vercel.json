@@ -16,7 +16,7 @@
       "destination": "/api/auth?__path=:path*"
     },
     {
-      "source": "/api/:fn(account|admin|billing|events|lead|privacy|shares)",
+      "source": "/api/:fn(account|admin|billing|events|lead|privacy|shares|terms)",
       "destination": "/api/app?fn=:fn"
     },
     {

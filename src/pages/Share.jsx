@@ -7,7 +7,9 @@ import ShareBar from '../components/ShareBar.jsx'
 import SidePicker from '../components/SidePicker.jsx'
 import { creditText, useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { get } from '../lib/api.js'
+import { get, post } from '../lib/api.js'
+import { ensureTerms, useAuth } from '../lib/auth.js'
+import { isEmail } from '../lib/format.js'
 import { defaultSides, designName, sideImage, shortSideLabel } from '../lib/designs.js'
 import { lotSqft } from '../lib/format.js'
 import { Link } from '../router.jsx'
@@ -21,12 +23,19 @@ export default function Share({ id }) {
   const [owner, setOwner] = useState(false)
   const [error, setError] = useState('')
   const [sides, setSides] = useState({ left: 'original', right: null })
+  const [gated, setGated] = useState(null) // { name, email } while the owner hasn't accepted the Terms
+  const { terms } = useAuth()
 
   useEffect(() => {
     // ?s=<share> credits the open to the share that brought this buyer here.
     const s = new URLSearchParams(window.location.search).get('s')
     get(`/api/properties?id=${id}&view=1&lang=${lang}${s && /^[a-z0-9]{10}$/.test(s) ? `&s=${s}` : ''}`)
       .then((d) => {
+        if (d.gated) {
+          setGated(d.sharer || {})
+          track('share_gated_view', null, { propertyId: id })
+          return
+        }
         setProperty(d.property)
         setOwner(d.owner)
         setSides(defaultSides(d.property))
@@ -52,6 +61,7 @@ export default function Share({ id }) {
       </main>
     )
   }
+  if (gated) return <Gated id={id} sharer={gated} />
   if (!property) {
     return (
       <main id="main" className="page page--center">
@@ -74,6 +84,14 @@ export default function Share({ id }) {
         <p className="banner banner--info">
           {t('share.ownerNote')}{' '}
           <Link to={`/studio/${id}`}>{t('share.backToStudio')}</Link>
+        </p>
+      )}
+      {owner && !terms?.accepted && (
+        <p className="banner banner--warn">
+          {t('terms.hiddenOwner')}{' '}
+          <button type="button" className="linkbtn" onClick={() => ensureTerms('share_page')}>
+            {t('terms.review')}
+          </button>
         </p>
       )}
       <header className="share__head">
@@ -156,6 +174,54 @@ export default function Share({ id }) {
       </section>
 
       {!owner && <EmailPrompt propertyId={id} address={a?.formatted || ''} />}
+    </main>
+  )
+}
+
+// The home isn't visible until its sharer accepts the Terms: say so, and let the
+// visitor ask them with one click (stored, and emailed to the sharer).
+function Gated({ id, sharer }) {
+  const { t } = useI18n()
+  const [email, setEmail] = useState('')
+  const [state, setState] = useState('idle') // idle | sending | sent | error
+  const name = sharer.name || t('terms.gate.someone')
+  useEffect(() => {
+    document.title = `${t('terms.gate.title')} — Sceneshare`
+  }, [t])
+  const ask = async (e) => {
+    e.preventDefault()
+    setState('sending')
+    try {
+      const s = new URLSearchParams(window.location.search).get('s')
+      await post('/api/terms', { propertyId: id, email: isEmail(email.trim()) ? email.trim() : undefined, s: s || undefined })
+      setState('sent')
+      track('terms_request', { withEmail: isEmail(email.trim()) }, { propertyId: id })
+    } catch {
+      setState('error')
+    }
+  }
+  return (
+    <main id="main" className="page page--center gated">
+      <p className="page__eyebrow">Sceneshare</p>
+      <h1 className="page__title">{t('terms.gate.title')}</h1>
+      <p>{t('terms.gate.body', { name })}</p>
+      {state === 'sent' ? (
+        <p className="plan__msg" role="status">
+          {t('terms.gate.sent', { name })}
+        </p>
+      ) : (
+        <form className="gated__form" onSubmit={ask}>
+          <label className="field">
+            <span>{t('terms.gate.yourEmail')}</span>
+            <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+          </label>
+          <button type="submit" className="btn btn--glow" disabled={state === 'sending'}>
+            {state === 'sending' ? t('auth.working') : t('terms.gate.cta', { who: sharer.email ? `${name} (${sharer.email})` : name })}
+          </button>
+          {state === 'error' && <p className="field__error">{t('err.generic')}</p>}
+        </form>
+      )}
+      <p className="fine">{t('terms.gate.note')}</p>
     </main>
   )
 }

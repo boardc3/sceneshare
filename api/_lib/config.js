@@ -71,6 +71,10 @@ export const config = {
   stripePriceYearly: env.STRIPE_PRICE_YEARLY || '',
 }
 
+// The Terms an account accepts before its homes can be shared. Bump when the
+// sharing terms change materially: every owner is then asked to accept again.
+export const TERMS_VERSION = '2026-11-04'
+
 export const features = () => ({
   render: Boolean(config.geminiKey),
   maps: Boolean(config.mapboxToken),

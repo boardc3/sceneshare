@@ -1,7 +1,7 @@
 import { sessionUser } from '../_lib/auth.js'
 import { assertCanEmail } from '../_lib/billing.js'
-import { config } from '../_lib/config.js'
-import { createShare, listShares, logSubmission, markShareSent, propertyRow } from '../_lib/db.js'
+import { config, TERMS_VERSION } from '../_lib/config.js'
+import { createShare, listShares, logSubmission, markShareSent, ownerAccepted, propertyRow } from '../_lib/db.js'
 import { newId, requireOwner, validId } from '../_lib/gate.js'
 import { ApiError, isEmail, query, readJson, route, send } from '../_lib/http.js'
 import { visitorId } from '../_lib/log.js'
@@ -37,6 +37,11 @@ export default route(
     }
     const user = await sessionUser(req, res)
     const byOwner = Boolean(user && row.owner_user_id === user.id)
+    // Sharing needs the owner's one-time acceptance of the Terms (rights to share).
+    if (!ownerAccepted(row, TERMS_VERSION)) {
+      if (byOwner) throw new ApiError(403, 'terms_required', 'Accept the Terms of Service once to start sharing.')
+      throw new ApiError(403, 'not_available', 'This home is not available to share yet.')
+    }
     // Free plan: a few emailed shares per home (copying the link is always free).
     if (channel === 'email' && byOwner) await assertCanEmail(user, row.id, recipients.length)
     const lang = body.lang === 'zh' ? 'zh' : 'en'

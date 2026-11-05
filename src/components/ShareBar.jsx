@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { translate, useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { post } from '../lib/api.js'
-import { useAuth } from '../lib/auth.js'
+import { ensureTerms, useAuth } from '../lib/auth.js'
 import { isEmail } from '../lib/format.js'
 import { Modal } from './Chrome.jsx'
 
@@ -30,7 +30,11 @@ export default function ShareBar({ id, address, owner = false, disabled = false,
     track(`share_${channel}`, { linkLang: L, owner }, { propertyId: id })
   }
 
+  // Owners accept the Terms once (rights to share) before their first share.
+  const cleared = async () => !owner || (await ensureTerms('share'))
+
   const copy = async () => {
+    if (!(await cleared())) return
     const sid = rid()
     const url = linkFor(sid)
     try {
@@ -42,12 +46,14 @@ export default function ShareBar({ id, address, owner = false, disabled = false,
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
   }
-  const text = () => {
+  const text = async () => {
+    if (!(await cleared())) return
     const sid = rid()
     record('text', sid)
     window.location.href = `sms:?&body=${encodeURIComponent(`${tl(owner ? 'share.mailSubjectOwner' : 'share.mailSubject', { address })} ${linkFor(sid)}`)}`
   }
   const native = async () => {
+    if (!(await cleared())) return
     const sid = rid()
     try {
       await navigator.share({ title: address || 'Sceneshare', text: tl('share.mailSubject', { address }), url: linkFor(sid) })
@@ -69,7 +75,11 @@ export default function ShareBar({ id, address, owner = false, disabled = false,
           </button>
         </div>
       )}
-      <button type="button" className="btn btn--glow btn--small" onClick={() => (setEmailOpen(true), track('share_email_open', null, { propertyId: id }))} disabled={disabled}>
+      <button type="button" className="btn btn--glow btn--small" onClick={async () => {
+          if (!(await cleared())) return
+          setEmailOpen(true)
+          track('share_email_open', null, { propertyId: id })
+        }} disabled={disabled}>
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
           <path d="M3 6h18v12H3zM3 7l9 7 9-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
         </svg>

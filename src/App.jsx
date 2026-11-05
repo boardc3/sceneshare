@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useState } from 'react'
-import { AuthModal, CookieBanner, Footer, Nav, UpgradePrompt } from './components/Chrome.jsx'
+import { AuthModal, CookieBanner, Footer, Nav, TermsPrompt, UpgradePrompt } from './components/Chrome.jsx'
 import { I18n, translate, useI18n } from './i18n.js'
 import { initAnalytics, pageView, reportError } from './lib/analytics.js'
 import { refresh, savePrefs, useAuth } from './lib/auth.js'
@@ -143,6 +143,7 @@ function Pages() {
       <Footer />
       <AuthModal />
       <UpgradePrompt />
+      <TermsPrompt />
       <CookieBanner />
     </>
   )

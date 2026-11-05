@@ -90,6 +90,19 @@ function Terms() {
 
       <h2 id="sharing">7. Sharing and link tracking</h2>
       <p>
+        <strong>Your right to share.</strong> Before you share any home, you must confirm, once for your account, that you own each home you share or have
+        the owner’s permission, and that you have the rights and/or permission to share its address, photographs, designs and other information with the
+        people you send it to. You make this confirmation and accept these Terms in the Service before your first share; it then covers every home you
+        share. We record the date and time, the version of these Terms you accepted, your account, and a hashed form of your IP address and your browser
+        type. If these Terms change materially, we may ask you to confirm again.
+      </p>
+      <p>
+        <strong>Before you confirm.</strong> Until you have confirmed, the homes you share are not shown to anyone else. A person who opens your link sees
+        only that the home is not visible yet, with your name and email address so they can ask you to confirm, and a button that sends you that request by
+        email. We store each such request (the home, the time, the requester’s email address if they choose to give it, and a hashed IP address) and send
+        you at most one request email per home per hour.
+      </p>
+      <p>
         Anyone who has a home’s share link can view its page, including its address, photographs, designs and map. Buyer pages are marked so search engines do not
         index them, but links can be forwarded. Share links only with people you intend to see the home, and delete the home if you no longer want the page
         available.
@@ -290,6 +303,12 @@ function Privacy() {
               <td>Until the home or the sharer’s account is deleted, or a recipient asks us to delete their address.</td>
             </tr>
             <tr>
+              <td>Terms acceptance and requests</td>
+              <td>When you confirm your right to share and accept the Terms: the time, the Terms version, your account, a hashed IP address and your browser type. When someone asks a sharer to accept: the home, the time, their email address if they give it, and a hashed IP address. Until then, the sharer’s name and email are shown to people who open their link.</td>
+              <td>You; the person asking</td>
+              <td>For as long as your account exists (acceptance is our record of your permission), then deleted with it.</td>
+            </tr>
+            <tr>
               <td>Contact information you give buyers’ pages</td>
               <td>If you ask for updates about a home, your email address, language and the home it concerns.</td>
               <td>You</td>
@@ -326,7 +345,7 @@ function Privacy() {
         <li><strong>Mapbox</strong> — maps, address search and nearby places (receives the addresses you search and, from your browser, map requests).</li>
         <li><strong>ScraperAPI</strong> — retrieves public listing pages for the address you entered.</li>
         <li><strong>Stripe</strong> — payments for Sceneshare Pro (receives your name, email, payment details and billing address when you subscribe).</li>
-        <li><strong>Resend</strong> — sends the share emails you ask us to send (receives the recipient addresses, your name and your message).</li>
+        <li><strong>Resend</strong> — sends the share emails you ask us to send (receives the recipient addresses, your name and your message), and the requests asking a sharer to accept the Terms.</li>
       </ul>
       <p>
         <strong>Share pages are public to anyone with the link.</strong> When you share a home, its address, photographs, designs and map are visible to whoever

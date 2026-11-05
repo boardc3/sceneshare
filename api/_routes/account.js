@@ -1,6 +1,8 @@
 import { authCall, authEnabled, sessionUser } from '../_lib/auth.js'
 import { cancelForDeletion } from '../_lib/billing.js'
-import { addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, setPrefs, touchUser } from '../_lib/db.js'
+import { TERMS_VERSION } from '../_lib/config.js'
+import { acceptTerms, addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, setPrefs, touchUser } from '../_lib/db.js'
+import { ipHash } from '../_lib/log.js'
 import { isAdmin, newId, requireUser } from '../_lib/gate.js'
 import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 
@@ -24,9 +26,10 @@ export default route(
       }
       const user = authEnabled() ? await sessionUser(req, res) : null
       if (!user) return send(res, 200, { ok: true, accounts: authEnabled(), user: null })
-      const { claimed, prefs } = await touchUser(user)
+      const { claimed, prefs, termsAt, termsVersion } = await touchUser(user)
       res._meta = claimed ? { claimed } : null
-      return send(res, 200, { ok: true, accounts: true, user, admin: isAdmin(user), claimed, prefs })
+      const terms = { accepted: Boolean(termsAt && termsVersion === TERMS_VERSION), at: termsAt, version: TERMS_VERSION }
+      return send(res, 200, { ok: true, accounts: true, user, admin: isAdmin(user), claimed, prefs, terms })
     }
 
     const body = await readJson(req)
@@ -35,6 +38,16 @@ export default route(
       const prefs = await setPrefs(u.id, body.prefs)
       res._meta = { prefs }
       return send(res, 200, { ok: true, prefs })
+    }
+    // Accept the Terms of Service (once per account, before sharing). Recorded with
+    // the version, time, hashed IP and browser, in terms_acceptances.
+    if (body.op === 'terms') {
+      const u = await requireUser(req, res)
+      if (body.accept !== true || body.rights !== true) throw new ApiError(400, 'confirm_required', 'Confirm you have the right to share, and accept the Terms.')
+      const at = await acceptTerms({ user: u, version: TERMS_VERSION, ipHash: ipHash(req), userAgent: req.headers['user-agent'], context: String(body.context || '').slice(0, 40) || null })
+      await logSubmission({ user: u, kind: 'terms_accept', meta: { version: TERMS_VERSION, context: body.context || null } })
+      res._meta = { version: TERMS_VERSION }
+      return send(res, 200, { ok: true, terms: { accepted: true, at, version: TERMS_VERSION } })
     }
     if (body.op !== 'delete') throw new ApiError(400, 'bad_op', 'Unknown request.')
     const user = await requireUser(req, res)

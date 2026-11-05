@@ -154,6 +154,8 @@ export default function Admin() {
       <section>
         <h2>Plans</h2>
         <Table rows={o.plans || []} cols={[['Plan', (r) => r.plan], ['Source', (r) => r.source], ['Status', (r) => r.status], ['Accounts', (r) => r.n]]} />
+        <h2>Terms acceptances and requests</h2>
+        <Table rows={o.termsLog || []} cols={[['When', (r) => when(r.at)], ['What', (r) => r.kind], ['Who', (r) => r.who], ['Detail', (r) => r.detail]]} empty="None yet." />
         <h2>Billing log</h2>
         <Table rows={o.billing || []} cols={[['When', (r) => when(r.at)], ['Source', (r) => r.source], ['Event', (r) => r.type], ['Account', (r) => r.user_id || ''], ['Detail', (r) => (r.data ? JSON.stringify(r.data).slice(0, 120) : '')]]} empty="No billing activity yet." />
       </section>
