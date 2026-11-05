@@ -2882,3 +2882,53 @@ body.is-modal {
   color: var(--error);
   font-size: var(--step--1);
 }
+
+/* ---------------------------------------------------------------- unit pop-up */
+.unitchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 999px;
+  background: var(--fog);
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+.unitmodal__addr {
+  margin-top: -4px;
+  color: var(--muted);
+}
+.unitgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+  max-height: min(46vh, 360px);
+  overflow-y: auto;
+  padding: 2px;
+}
+.unitgrid__btn {
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+.unitgrid__btn:hover {
+  border-color: var(--ink);
+}
+.unitgrid__btn:focus-visible {
+  outline: 2px solid var(--glow);
+  outline-offset: 2px;
+}
+.unitmodal__other {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.unitmodal__other .field {
+  flex: 1 1 12rem;
+}
