@@ -25,10 +25,17 @@ export async function findZpid(addr) {
 // Units Zillow knows at one street address ("1400 Mission St #1303 …"). Zillow's
 // suggestions stop at 12 per query, so a building is read with a few prefixed
 // queries in parallel (#1 … #9): a 96-unit tower came back whole this way.
+// "South Westgate Avenue" (Mapbox) → "S Westgate Ave" (how Zillow writes it).
+const ABBR = { north: 'N', south: 'S', east: 'E', west: 'W', northeast: 'NE', northwest: 'NW', southeast: 'SE', southwest: 'SW', avenue: 'Ave', street: 'St', boulevard: 'Blvd', drive: 'Dr', road: 'Rd', lane: 'Ln', court: 'Ct', place: 'Pl', terrace: 'Ter', circle: 'Cir', highway: 'Hwy', parkway: 'Pkwy', way: 'Way', trail: 'Trl', square: 'Sq' }
+const DIRECTIONS = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'north', 'south', 'east', 'west', 'northeast', 'northwest', 'southeast', 'southwest'])
+export const shortRoute = (route = '') => route.split(/\s+/).map((w) => ABBR[w.toLowerCase()] || w).join(' ')
+// The street's own name ("westgate"), ignoring directions and suffixes, to match against.
+const streetName = (route = '') => route.toLowerCase().split(/\s+/).find((w) => w && !DIRECTIONS.has(w)) || ''
+
 export async function unitsAt({ streetNumber, route, city, state, zip }) {
-  const base = `${streetNumber} ${route}`.trim()
+  const base = `${streetNumber} ${shortRoute(route)}`.trim()
   const tail = `, ${city || ''}, ${state || ''} ${zip || ''}`.replace(/\s+/g, ' ').trim()
-  const street = String(route || '').split(/\s+/)[0]?.toLowerCase() || ''
+  const street = streetName(route)
   const queries = [`${base}${tail}`, ...['1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'PH'].map((p) => `${base} #${p}${tail}`)]
   const lists = await Promise.all(
     queries.map(async (text) => {
@@ -44,7 +51,7 @@ export async function unitsAt({ streetNumber, route, city, state, zip }) {
   )
   const out = new Set()
   for (const display of lists.flat()) {
-    if (!sameStreetNumber(display, streetNumber) || (street && !display.toLowerCase().includes(street))) continue
+    if (!sameStreetNumber(display, streetNumber) || (street && !display.toLowerCase().includes(street)) || (zip && !display.includes(zip))) continue
     const m = /(?:#|\b(?:apt|unit|ste|suite)\.?\s*#?)\s*([A-Za-z0-9-]{1,8})\b/i.exec(display)
     if (m) out.add(m[1].toUpperCase())
   }
