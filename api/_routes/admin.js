@@ -1,11 +1,13 @@
-import { adminOverview, listErrors, reviewErrors } from '../_lib/db.js'
-import { requireAdmin } from '../_lib/gate.js'
+import { adminAnalytics, adminOverview, listErrors, reviewErrors, superUserDetail, superUsers } from '../_lib/db.js'
+import { requireAdmin, requireSuperAdmin } from '../_lib/gate.js'
 import { query, readJson, route, send } from '../_lib/http.js'
 
 // /admin: totals, traffic, routes, errors, leads, homes, designs and privacy
 // requests — for verified admin accounts only (ADMIN_EMAILS).
 //   GET                                       overview
 //   GET  ?errors=1&days=7&source=&level=&open=1   the error log
+//   GET  ?analytics=1&days=30                      the analytics dashboard
+//   GET  ?users=1&days=30 · ?user=<id>             super admin: users, growth, one user's activity
 //   POST { op: 'errors.review', ids: [..] | all: true, reviewed: true|false }
 export default route(
   ['GET', 'POST'],
@@ -18,6 +20,18 @@ export default route(
       return send(res, 200, { ok: true, n })
     }
     const q = query(req)
+    // Super admin only: every user's own activity and growth.
+    if (q.users === '1') {
+      await requireSuperAdmin(req, res)
+      return send(res, 200, { ok: true, users: await superUsers(Number(q.days) || 30) })
+    }
+    if (q.user) {
+      await requireSuperAdmin(req, res)
+      const detail = await superUserDetail(String(q.user).slice(0, 80))
+      if (!detail) return send(res, 404, { ok: false, error: 'not_found', message: 'No such user.' })
+      return send(res, 200, { ok: true, ...detail })
+    }
+    if (q.analytics === '1') return send(res, 200, { ok: true, analytics: await adminAnalytics(Number(q.days) || 30), at: new Date().toISOString() })
     if (q.errors === '1') {
       const out = await listErrors({
         days: Number(q.days) || 7,

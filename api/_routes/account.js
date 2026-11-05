@@ -1,20 +1,26 @@
 import { authCall, authEnabled, sessionUser } from '../_lib/auth.js'
 import { cancelForDeletion } from '../_lib/billing.js'
 import { TERMS_VERSION } from '../_lib/config.js'
-import { acceptTerms, addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, setPrefs, touchUser } from '../_lib/db.js'
+import { acceptTerms, addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, ownerAnalytics, setPrefs, touchUser } from '../_lib/db.js'
 import { background, ipHash } from '../_lib/log.js'
 import { removeImages } from '../_lib/storage.js'
-import { isAdmin, newId, requireUser } from '../_lib/gate.js'
+import { isAdmin, isSuperAdmin, newId, requireUser } from '../_lib/gate.js'
 import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 
 // GET              who is signed in (and moves homes saved under their verified email into the account)
 // GET ?export=1    "Download my data": everything we hold about the account, as JSON
+// GET  ?analytics=1&days=30           analytics for the signed-in owner's own homes
 // POST {op:'delete', confirm:'DELETE'}   delete the account and everything it made
 export default route(
   ['GET', 'POST'],
   async (req, res) => {
     if (req.method === 'GET') {
       const q = query(req)
+      // The owner's analytics: their own homes only.
+      if (q.analytics === '1') {
+        const user = await requireUser(req, res)
+        return send(res, 200, { ok: true, analytics: await ownerAnalytics(user.id, Number(q.days) || 30) })
+      }
       if (q.export === '1') {
         const user = await requireUser(req, res)
         const data = await exportUser(user)
@@ -30,7 +36,7 @@ export default route(
       const { claimed, prefs, termsAt, termsVersion } = await touchUser(user)
       res._meta = claimed ? { claimed } : null
       const terms = { accepted: Boolean(termsAt && termsVersion === TERMS_VERSION), at: termsAt, version: TERMS_VERSION }
-      return send(res, 200, { ok: true, accounts: true, user, admin: isAdmin(user), claimed, prefs, terms })
+      return send(res, 200, { ok: true, accounts: true, user, admin: isAdmin(user), superAdmin: isSuperAdmin(user), claimed, prefs, terms })
     }
 
     const body = await readJson(req)

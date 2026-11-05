@@ -29,10 +29,15 @@ function authUrl() {
 }
 
 // Who may open /admin (signed in, email verified). Comma-separated.
-const adminEmails = (env.ADMIN_EMAILS || 'chris@ccolbert.com')
-  .split(',')
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean)
+// Super admins (Chris, 2026-11-05: chris@sceneset.ai) also see every user's own
+// activity; they are always admins too.
+const list = (v) =>
+  String(v || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+const superAdminEmails = list(env.SUPER_ADMIN_EMAILS || 'chris@sceneset.ai,chris@ccolbert.com')
+const adminEmails = [...new Set([...list(env.ADMIN_EMAILS || 'chris@ccolbert.com'), ...superAdminEmails])]
 
 export const config = {
   authUrl: authUrl(),
@@ -40,6 +45,7 @@ export const config = {
   // from the database URL (a server-only secret), so no extra setup is needed.
   authSecret: env.AUTH_COOKIE_SECRET || '',
   adminEmails,
+  superAdminEmails,
   production: env.VERCEL_ENV === 'production',
   geminiKey: env.GOOGLE_API_KEY || env.GEMINI_API_KEY || '',
   // "Nano Banana 2" = Gemini 3.1 Flash Image. Override without a redeploy of code.

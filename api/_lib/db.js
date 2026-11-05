@@ -815,6 +815,241 @@ export async function deleteDesignRows(propertyId, designId) {
   await s`delete from designs where property_id = ${propertyId} and id = ${designId}`
 }
 
+// ---------------------------------------------------------------- analytics dashboard (/admin → Analytics)
+// Daily series, period totals vs the period before, the owner funnel, and where
+// visitors come from. Days are Pacific time. Visitors and sessions only exist for
+// people who allowed analytics; page views are counted for everyone.
+export async function adminAnalytics(days = 30) {
+  const s = await ensure()
+  if (!s) return null
+  const n = Math.min(365, Math.max(1, Math.round(days)))
+  const tz = 'America/Los_Angeles'
+  const end = new Date()
+  const start = new Date(end.getTime() - n * 864e5)
+  const prev = new Date(start.getTime() - n * 864e5)
+  const num = (x) => Number(x || 0)
+
+  // One row per day per metric, from each source table.
+  const daily = await s`with d as (
+      select generate_series((${start.toISOString()}::timestamptz at time zone ${tz})::date, (${end.toISOString()}::timestamptz at time zone ${tz})::date, interval '1 day')::date as day),
+    ev as (select (at at time zone ${tz})::date as day,
+        count(*) filter (where name = 'page_view') as page_views,
+        count(distinct visitor_id) filter (where name = 'page_view') as visitors,
+        count(distinct session_id) filter (where name = 'page_view') as sessions,
+        count(*) filter (where name = 'address_search') as searches,
+        count(*) filter (where name = 'house_restyle_start' or name = 'photo_restyle_start') as restyles,
+        count(*) filter (where name like 'share%' and name not in ('share_email_open')) as shares_clicked
+      from events where at > ${start.toISOString()} group by 1),
+    u as (select (created_at at time zone ${tz})::date as day, count(*) as signups from users where created_at > ${start.toISOString()} group by 1),
+    p as (select (created_at at time zone ${tz})::date as day, count(*) as homes from properties where created_at > ${start.toISOString()} group by 1),
+    r as (select (created_at at time zone ${tz})::date as day, count(*) as renders from renders where created_at > ${start.toISOString()} group by 1),
+    sh as (select (created_at at time zone ${tz})::date as day, count(*) as shares from shares where created_at > ${start.toISOString()} group by 1),
+    bv as (select (viewed_at at time zone ${tz})::date as day, count(*) as buyer_views, count(distinct visitor_id) as buyers from share_views where viewed_at > ${start.toISOString()} group by 1),
+    l as (select (first_seen at time zone ${tz})::date as day, count(*) as leads from leads where first_seen > ${start.toISOString()} group by 1)
+    select d.day, coalesce(ev.page_views, 0)::int as page_views, coalesce(ev.visitors, 0)::int as visitors, coalesce(ev.sessions, 0)::int as sessions,
+      coalesce(ev.searches, 0)::int as searches, coalesce(ev.restyles, 0)::int as restyles, coalesce(u.signups, 0)::int as signups,
+      coalesce(p.homes, 0)::int as homes, coalesce(r.renders, 0)::int as renders, coalesce(sh.shares, 0)::int as shares,
+      coalesce(bv.buyer_views, 0)::int as buyer_views, coalesce(l.leads, 0)::int as leads
+    from d left join ev using (day) left join u using (day) left join p using (day) left join r using (day) left join sh using (day) left join bv using (day) left join l using (day)
+    order by d.day`
+
+  const totalsFor = async (from, to) => {
+    const [t] = await s`select
+        (select count(*) from events where name = 'page_view' and at > ${from} and at <= ${to})::int as page_views,
+        (select count(distinct visitor_id) from events where name = 'page_view' and at > ${from} and at <= ${to})::int as visitors,
+        (select count(distinct session_id) from events where name = 'page_view' and at > ${from} and at <= ${to})::int as sessions,
+        (select count(*) from users where created_at > ${from} and created_at <= ${to})::int as signups,
+        (select count(*) from properties where created_at > ${from} and created_at <= ${to})::int as homes,
+        (select count(*) from renders where created_at > ${from} and created_at <= ${to})::int as renders,
+        (select count(*) from shares where created_at > ${from} and created_at <= ${to})::int as shares,
+        (select count(*) from share_views where viewed_at > ${from} and viewed_at <= ${to})::int as buyer_views,
+        (select count(*) from leads where first_seen > ${from} and first_seen <= ${to})::int as leads,
+        (select coalesce(round(avg(ms)), 0) from (select session_id, sum((props->>'activeMs')::bigint) as ms from events where name = 'engagement' and session_id is not null and at > ${from} and at <= ${to} group by 1) x)::bigint as avg_engaged_ms`
+    return Object.fromEntries(Object.entries(t || {}).map(([k, v]) => [k, num(v)]))
+  }
+  const totals = await totalsFor(start.toISOString(), end.toISOString())
+  const previous = await totalsFor(prev.toISOString(), start.toISOString())
+
+  // Owner funnel, by session (analytics-consenting visitors): visited → searched an
+  // address → opened the studio → started a restyle → shared.
+  const [f] = await s`with x as (select session_id,
+        bool_or(name = 'page_view') as visited,
+        bool_or(name in ('address_search_start', 'address_search')) as searched,
+        bool_or(name = 'page_view' and path like '/studio/%') as studio,
+        bool_or(name in ('house_restyle_start', 'photo_restyle_start')) as restyled,
+        bool_or(name in ('share_email', 'share_copy', 'share_text', 'share_native')) as shared
+      from events where at > ${start.toISOString()} and session_id is not null group by 1)
+    select count(*) filter (where visited)::int as visited, count(*) filter (where searched)::int as searched, count(*) filter (where studio)::int as studio,
+      count(*) filter (where restyled)::int as restyled, count(*) filter (where shared)::int as shared from x`
+
+  const since = start.toISOString()
+  const pages = await s`select case when path ~ '^/p/' then '/p/:home' when path ~ '^/studio/' then '/studio/:home' else coalesce(path, '/') end as page,
+      count(*)::int as n, count(distinct visitor_id)::int as visitors from events where name = 'page_view' and at > ${since} group by 1 order by 2 desc limit 12`
+  const referrers = await s`select coalesce(nullif(substring(referrer from '^https?://(?:www[.])?([^/:?#]+)'), ''), 'Direct / none') as source, count(*)::int as n
+    from events where name = 'page_view' and at > ${since} and (referrer is null or referrer not like '%sceneshare.app%') group by 1 order by 2 desc limit 10`
+  const countries = await s`select coalesce(country, '—') as country, count(*)::int as n from events where name = 'page_view' and at > ${since} group by 1 order by 2 desc limit 10`
+  const devices = await s`select coalesce(device, '—') as device, count(*)::int as n from events where name = 'page_view' and at > ${since} group by 1 order by 2 desc`
+  const languages = await s`select coalesce(lang, '—') as lang, count(*)::int as n from events where name = 'page_view' and at > ${since} group by 1 order by 2 desc`
+  const actions = await s`select name, count(*)::int as n, count(distinct coalesce(session_id, visitor_id))::int as people from events
+    where at > ${since} and name not in ('page_view', 'engagement', 'csp_violation', 'consent', 'client_error') group by 1 order by 2 desc limit 25`
+  const homes = await s`select p.id, coalesce(p.data->>'nickname', p.formatted_address, 'Untitled home') as name, count(v.*)::int as views, count(distinct v.visitor_id)::int as buyers, max(v.viewed_at) as last_at
+    from share_views v join properties p on p.id = v.property_id where v.viewed_at > ${since} group by 1, 2 order by 3 desc limit 10`
+  const renderStats = await s`select count(*)::int as n, coalesce(round(avg(ms)), 0)::int as avg_ms, coalesce(round(percentile_cont(0.9) within group (order by ms)), 0)::int as p90_ms,
+      count(*) filter (where feedback is not null)::int as changes from renders where created_at > ${since}`
+
+  return {
+    days: n,
+    start: since,
+    end: end.toISOString(),
+    daily: daily.map((r) => ({ ...r, day: new Date(r.day).toISOString().slice(0, 10) })),
+    totals,
+    previous,
+    funnel: f || {},
+    pages,
+    referrers,
+    countries,
+    devices,
+    languages,
+    actions,
+    homes,
+    renders: renderStats[0] || {},
+  }
+}
+
+// ---------------------------------------------------------------- super admin: users and growth
+// Activity here is the server's own record (api_log, by account), so it counts every
+// signed-in user whatever their analytics choice.
+export async function superUsers(days = 30) {
+  const s = await ensure()
+  if (!s) return null
+  const n = Math.min(365, Math.max(1, Math.round(days)))
+  const tz = 'America/Los_Angeles'
+  const start = new Date(Date.now() - n * 864e5).toISOString()
+  const num = (x) => Number(x || 0)
+
+  const users = await s`with h as (select owner_user_id as uid, count(*) as homes, coalesce(sum(share_views), 0) as buyer_views, max(created_at) as last_home from properties where owner_user_id is not null group by 1),
+      r as (select user_id as uid, count(*) as renders, count(*) filter (where created_at > ${start}) as renders_period, count(*) filter (where feedback is not null) as changes from renders where user_id is not null group by 1),
+      sh as (select user_id as uid, count(*) as shares, coalesce(sum(opens), 0) as opens from shares where user_id is not null and by_owner group by 1),
+      a as (select user_id as uid, count(*) filter (where at > ${start}) as requests, count(distinct (at at time zone ${tz})::date) filter (where at > ${start}) as active_days, max(at) as last_active from api_log where user_id is not null group by 1),
+      c as (select user_id as uid, coalesce(-sum(delta) filter (where delta < 0), 0) as credits_used, coalesce(-sum(delta) filter (where delta < 0 and at > ${start}), 0) as credits_used_period from credit_ledger group by 1)
+    select u.id, u.email, u.name, u.email_verified, u.created_at, u.last_seen_at, coalesce(u.plan, 'trial') as plan, u.plan_status, u.plan_source, u.plan_interval,
+      coalesce(h.homes, 0)::int as homes, coalesce(h.buyer_views, 0)::int as buyer_views, coalesce(r.renders, 0)::int as renders, coalesce(r.renders_period, 0)::int as renders_period,
+      coalesce(r.changes, 0)::int as changes, coalesce(sh.shares, 0)::int as shares, coalesce(sh.opens, 0)::int as opens, coalesce(a.requests, 0)::int as requests,
+      coalesce(a.active_days, 0)::int as active_days, greatest(a.last_active, u.last_seen_at) as last_active, coalesce(c.credits_used, 0)::int as credits_used, coalesce(c.credits_used_period, 0)::int as credits_used_period
+    from users u left join h on h.uid = u.id left join r on r.uid = u.id left join sh on sh.uid = u.id left join a on a.uid = u.id left join c on c.uid = u.id
+    order by greatest(a.last_active, u.last_seen_at) desc nulls last, u.created_at desc limit 500`
+
+  // Growth, by day: new accounts, accounts total, and active accounts (any request that day).
+  const growth = await s`with d as (select generate_series(((now() - ${n + ' days'}::interval) at time zone ${tz})::date, (now() at time zone ${tz})::date, interval '1 day')::date as day),
+      su as (select (created_at at time zone ${tz})::date as day, count(*) as n from users group by 1),
+      act as (select (at at time zone ${tz})::date as day, count(distinct user_id) as n from api_log where user_id is not null and at > now() - ${n + 1 + ' days'}::interval group by 1)
+    select d.day, coalesce(su.n, 0)::int as signups, (select count(*) from users where (created_at at time zone ${tz})::date <= d.day)::int as accounts, coalesce(act.n, 0)::int as active
+    from d left join su using (day) left join act using (day) order by d.day`
+
+  const [act] = await s`select
+      (select count(distinct user_id) from api_log where user_id is not null and at > now() - interval '1 day')::int as dau,
+      (select count(distinct user_id) from api_log where user_id is not null and at > now() - interval '7 days')::int as wau,
+      (select count(distinct user_id) from api_log where user_id is not null and at > now() - interval '30 days')::int as mau,
+      (select count(*) from users)::int as accounts,
+      (select count(*) from users where created_at > ${start})::int as new_accounts,
+      (select count(*) from users where coalesce(plan, '') in ('entry', 'premium', 'pro') and coalesce(plan_status, '') in ('active', 'trialing', 'past_due'))::int as paying`
+  const plans = await s`select coalesce(plan, 'trial') as plan, count(*)::int as n from users group by 1 order by 2 desc`
+
+  const total = users.length || 1
+  const activation = {
+    accounts: users.length,
+    addedHome: users.filter((u) => u.homes > 0).length,
+    rendered: users.filter((u) => u.renders > 0).length,
+    shared: users.filter((u) => u.shares > 0).length,
+    buyerViewed: users.filter((u) => u.buyer_views > 0).length,
+    returned: users.filter((u) => u.active_days > 1).length,
+  }
+  return {
+    days: n,
+    totals: Object.fromEntries(Object.entries(act || {}).map(([k, v]) => [k, num(v)])),
+    plans,
+    activation,
+    activationPct: Object.fromEntries(Object.entries(activation).map(([k, v]) => [k, Math.round((v / total) * 100)])),
+    growth: growth.map((r) => ({ ...r, day: new Date(r.day).toISOString().slice(0, 10) })),
+    users,
+  }
+}
+
+// One user's full picture: profile, homes, and a merged activity timeline.
+export async function superUserDetail(userId) {
+  const s = await ensure()
+  if (!s) return null
+  const [user] = await s`select id, email, name, email_verified, created_at, last_seen_at, coalesce(plan, 'trial') as plan, plan_status, plan_source, plan_interval, period_end, cancel_at_period_end, terms_accepted_at, prefs from users where id = ${userId}`
+  if (!user) return null
+  const homes = await s`select p.id, coalesce(p.data->>'nickname', p.formatted_address, 'Untitled home') as name, p.created_at, p.updated_at, p.share_views, p.last_viewed_at,
+      jsonb_array_length(coalesce(p.data->'photos', '[]'::jsonb))::int as photos, jsonb_array_length(coalesce(p.data->'designs', '[]'::jsonb))::int as designs,
+      (select count(*) from shares sh where sh.property_id = p.id and sh.by_owner)::int as shares, (select coalesce(sum(opens), 0) from shares sh where sh.property_id = p.id)::int as opens,
+      (select count(distinct visitor_id) from share_views v where v.property_id = p.id)::int as buyers
+    from properties p where p.owner_user_id = ${userId} order by p.updated_at desc limit 100`
+  const timeline = await s`(select at, 'request' as kind, method || ' ' || route as what, status, code, meta::text as detail from api_log where user_id = ${userId} order by at desc limit 250)
+    union all (select at, 'action' as kind, name as what, null::int as status, null as code, coalesce(path, '') || coalesce(' ' || left(props::text, 300), '') as detail from events where user_id = ${userId} and name not in ('engagement', 'page_view') order by at desc limit 250)
+    union all (select at, 'page' as kind, path as what, null::int, null, null from events where user_id = ${userId} and name = 'page_view' order by at desc limit 150)
+    union all (select at, 'error' as kind, coalesce(method || ' ', '') || coalesce(path, route, '') as what, status, code, message as detail from error_log where user_id = ${userId} order by at desc limit 100)
+    order by at desc limit 400`
+  // Not "credits": the client reads a top-level `credits` as the viewer's own balance.
+  const creditHistory = await s`select at, delta, kind, pool from credit_ledger where user_id = ${userId} order by at desc limit 50`
+  return { user, homes, timeline, creditHistory }
+}
+
+// ---------------------------------------------------------------- owners: analytics for their own homes
+export async function ownerAnalytics(userId, days = 30) {
+  const s = await ensure()
+  if (!s) return null
+  const n = Math.min(365, Math.max(1, Math.round(days)))
+  const tz = 'America/Los_Angeles'
+  const end = new Date()
+  const start = new Date(end.getTime() - n * 864e5).toISOString()
+  const prev = new Date(end.getTime() - 2 * n * 864e5).toISOString()
+  const homes = await s`select id, coalesce(data->>'nickname', formatted_address, 'Untitled home') as name, created_at from properties where owner_user_id = ${userId} order by updated_at desc limit 200`
+  const ids = homes.map((h) => h.id)
+  const empty = { days: n, homes: [], daily: [], totals: {}, previous: {}, countries: [], languages: [], sections: [] }
+  if (!ids.length) return empty
+  const daily = await s`with d as (select generate_series(((now() - ${n + ' days'}::interval) at time zone ${tz})::date, (now() at time zone ${tz})::date, interval '1 day')::date as day),
+      v as (select (viewed_at at time zone ${tz})::date as day, count(*) as views, count(distinct visitor_id) as buyers from share_views where property_id = any(${ids}) and viewed_at > ${start} group by 1),
+      sh as (select (created_at at time zone ${tz})::date as day, count(*) as shares from shares where property_id = any(${ids}) and by_owner and created_at > ${start} group by 1)
+    select d.day, coalesce(v.views, 0)::int as views, coalesce(v.buyers, 0)::int as buyers, coalesce(sh.shares, 0)::int as shares from d left join v using (day) left join sh using (day) order by d.day`
+  const totalsFor = async (from, to) => {
+    const [t] = await s`select
+        (select count(*) from share_views where property_id = any(${ids}) and viewed_at > ${from} and viewed_at <= ${to})::int as views,
+        (select count(distinct visitor_id) from share_views where property_id = any(${ids}) and viewed_at > ${from} and viewed_at <= ${to})::int as buyers,
+        (select count(*) from shares where property_id = any(${ids}) and by_owner and created_at > ${from} and created_at <= ${to})::int as shares,
+        (select count(*) from share_views where property_id = any(${ids}) and share_id is not null and viewed_at > ${from} and viewed_at <= ${to})::int as opens,
+        (select count(distinct email) from submissions where kind = 'email_capture' and property_id = any(${ids}) and created_at > ${from} and created_at <= ${to})::int as leads,
+        (select coalesce(round(avg(ms)), 0) from (select session_id, sum((props->>'activeMs')::bigint) as ms from events where name = 'engagement' and property_id = any(${ids}) and props->>'kind' = 'share' and coalesce(user_id, '') <> ${userId} and session_id is not null and at > ${from} and at <= ${to} group by 1) x)::bigint as avg_ms`
+    return Object.fromEntries(Object.entries(t || {}).map(([k, v]) => [k, Number(v || 0)]))
+  }
+  const totals = await totalsFor(start, end.toISOString())
+  const previous = await totalsFor(prev, start)
+  const per = await s`select p.id,
+      (select count(*) from share_views v where v.property_id = p.id and v.viewed_at > ${start})::int as views,
+      (select count(distinct visitor_id) from share_views v where v.property_id = p.id and v.viewed_at > ${start})::int as buyers,
+      (select count(*) from shares sh where sh.property_id = p.id and sh.by_owner and sh.created_at > ${start})::int as shares,
+      (select max(viewed_at) from share_views v where v.property_id = p.id) as last_viewed,
+      (select coalesce(round(avg(ms)), 0) from (select session_id, sum((props->>'activeMs')::bigint) as ms from events where name = 'engagement' and property_id = p.id and props->>'kind' = 'share' and coalesce(user_id, '') <> ${userId} and session_id is not null and at > ${start} group by 1) x)::bigint as avg_ms,
+      (select kv.key from events, jsonb_each_text(coalesce(props->'sections', '{}'::jsonb)) kv where name = 'engagement' and property_id = p.id and props->>'kind' = 'share' and coalesce(user_id, '') <> ${userId} and at > ${start} group by kv.key order by sum(kv.value::bigint) desc limit 1) as top_section
+    from properties p where p.id = any(${ids})`
+  const byId = Object.fromEntries(per.map((r) => [r.id, r]))
+  const countries = await s`select coalesce(country, '—') as country, count(*)::int as n from share_views where property_id = any(${ids}) and viewed_at > ${start} group by 1 order by 2 desc limit 10`
+  const languages = await s`select coalesce(lang, '—') as lang, count(*)::int as n from share_views where property_id = any(${ids}) and viewed_at > ${start} group by 1 order by 2 desc`
+  const sections = await s`select kv.key as section, sum(kv.value::bigint)::bigint as ms from events, jsonb_each_text(coalesce(props->'sections', '{}'::jsonb)) kv
+    where name = 'engagement' and property_id = any(${ids}) and props->>'kind' = 'share' and coalesce(user_id, '') <> ${userId} and at > ${start} group by 1 order by 2 desc`
+  return {
+    days: n,
+    daily: daily.map((r) => ({ ...r, day: new Date(r.day).toISOString().slice(0, 10) })),
+    totals,
+    previous,
+    homes: homes.map((h) => ({ ...h, ...byId[h.id], avg_ms: Number(byId[h.id]?.avg_ms || 0) })).sort((a, b) => b.views - a.views || String(b.last_viewed || '').localeCompare(String(a.last_viewed || ''))),
+    countries,
+    languages,
+    sections: sections.map((r) => ({ section: r.section, ms: Number(r.ms || 0) })),
+  }
+}
+
 // ---------------------------------------------------------------- error log
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n))
 export async function insertErrors(rows) {

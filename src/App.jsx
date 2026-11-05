@@ -13,6 +13,7 @@ import { Link, Router, match, useRouter } from './router.jsx'
 // Pages most visitors never open load on demand.
 const Account = lazy(() => import('./pages/Account.jsx'))
 const Admin = lazy(() => import('./pages/Admin.jsx'))
+const Insights = lazy(() => import('./pages/Insights.jsx'))
 const Legal = lazy(() => import('./pages/Legal.jsx'))
 const Plan = lazy(() => import('./pages/Plan.jsx'))
 const PrivacyRequest = lazy(() => import('./pages/PrivacyRequest.jsx'))
@@ -133,6 +134,7 @@ function Pages() {
           {m.page === 'share' && <Share key={m.id} id={m.id} />}
           {m.page === 'account' && <Account />}
           {m.page === 'admin' && <Admin />}
+          {m.page === 'insights' && <Insights />}
           {m.page === 'reset' && <Reset />}
           {m.page === 'settings' && <Settings />}
           {m.page === 'plan' && <Plan />}

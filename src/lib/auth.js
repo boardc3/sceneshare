@@ -5,7 +5,7 @@ import { track } from './analytics.js'
 import { get, post, setAuthRecovery } from './api.js'
 import { clearBilling, loadBilling } from './billing.js'
 
-const state = { ready: false, user: null, admin: false, accounts: true, claimed: 0, prefs: {}, terms: { accepted: false } }
+const state = { ready: false, user: null, admin: false, superAdmin: false, accounts: true, claimed: 0, prefs: {}, terms: { accepted: false } }
 let snapshot = { ...state }
 const subs = new Set()
 function set(patch) {
@@ -37,7 +37,7 @@ export async function refresh() {
   }
   try {
     const d = await get('/api/account')
-    set({ ready: true, user: d.user, admin: !!d.admin, accounts: d.accounts !== false, claimed: d.claimed || 0, prefs: d.prefs || {}, terms: d.terms || { accepted: false } })
+    set({ ready: true, user: d.user, admin: !!d.admin, superAdmin: !!d.superAdmin, accounts: d.accounts !== false, claimed: d.claimed || 0, prefs: d.prefs || {}, terms: d.terms || { accepted: false } })
     if (d.user) loadBilling()
     else clearBilling()
     if (verifier && d.user) track('sign_in', { method: 'google' })
@@ -118,7 +118,7 @@ export const signOutOthers = () => call('revoke-other-sessions', {})
 export async function signOut() {
   await call('sign-out', {})
   track('sign_out')
-  set({ user: null, admin: false, claimed: 0, terms: { accepted: false } })
+  set({ user: null, admin: false, superAdmin: false, claimed: 0, terms: { accepted: false } })
   clearBilling()
 }
 

@@ -16,6 +16,13 @@ export async function requireUser(req, res) {
 
 export const isAdmin = (user) => Boolean(user?.emailVerified && config.adminEmails.includes(user.email))
 
+export const isSuperAdmin = (user) => Boolean(user?.emailVerified && config.superAdminEmails.includes(user.email))
+export async function requireSuperAdmin(req, res) {
+  const user = await requireUser(req, res)
+  if (!isSuperAdmin(user)) throw new ApiError(403, 'not_super_admin', 'This view is for the Sceneshare super admin.')
+  return user
+}
+
 export async function requireAdmin(req, res) {
   const user = await requireUser(req, res)
   if (!isAdmin(user)) throw new ApiError(403, 'not_admin', 'This page is for Sceneshare administrators.')

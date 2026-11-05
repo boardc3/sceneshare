@@ -60,6 +60,9 @@ export function Nav({ tone = 'light' }) {
                 <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/account'))}>
                   {t('nav.homes')}
                 </button>
+                <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/analytics'))}>
+                  {t('nav.insights')}
+                </button>
                 <button type="button" role="menuitem" onClick={() => (setMenu(false), navigate('/plan'))}>
                   {t('nav.plan')}
                 </button>

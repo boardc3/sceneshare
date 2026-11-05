@@ -2,9 +2,13 @@ import { Fragment, useCallback, useEffect, useState } from 'react'
 import { get, post, shown } from '../lib/api.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
 import { Link } from '../router.jsx'
+import AdminAnalytics from '../components/AdminAnalytics.jsx'
+import AdminUsers from '../components/AdminUsers.jsx'
 
 // Internal: what is happening on Sceneshare. Verified admin accounts only
-// (ADMIN_EMAILS in Vercel; defaults to chris@ccolbert.com). English only.
+// (ADMIN_EMAILS in Vercel; defaults to chris@ccolbert.com). Super admins
+// (SUPER_ADMIN_EMAILS; defaults to chris@sceneset.ai and chris@ccolbert.com) also
+// get the Users tab. English only.
 const when = (s) => (s ? new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—')
 
 function Table({ rows, cols, empty = 'Nothing yet.' }) {
@@ -36,9 +40,14 @@ function Table({ rows, cols, empty = 'Nothing yet.' }) {
 }
 
 export default function Admin() {
-  const { user, ready, admin } = useAuth()
+  const { user, ready, admin, superAdmin } = useAuth()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [tab, setTab] = useState(() => ({ '#analytics': 'analytics', '#errors': 'errors', '#users': 'users' })[location.hash] || 'overview')
+  const go = (t) => {
+    setTab(t)
+    history.replaceState(null, '', t === 'overview' ? location.pathname : `#${t}`)
+  }
   const load = () =>
     get('/api/admin')
       .then((d) => setData(d))
@@ -73,10 +82,29 @@ export default function Admin() {
           <p className="page__eyebrow">Admin · {when(data.at)}</p>
           <h1 className="page__title">Sceneshare activity</h1>
         </div>
-        <button type="button" className="btn btn--quiet btn--small" onClick={load}>
-          Refresh
-        </button>
+        {tab === 'overview' && (
+          <button type="button" className="btn btn--quiet btn--small" onClick={load}>
+            Refresh
+          </button>
+        )}
       </header>
+      <nav className="admin__tabs" aria-label="Admin sections">
+        {[
+          ['overview', 'Overview'],
+          ['analytics', 'Analytics'],
+          ...(superAdmin ? [['users', 'Users']] : []),
+          ['errors', 'Error log'],
+        ].map(([k, label]) => (
+          <button key={k} type="button" aria-current={tab === k ? 'page' : undefined} onClick={() => go(k)}>
+            {label}
+          </button>
+        ))}
+      </nav>
+      {tab === 'analytics' && <AdminAnalytics />}
+      {tab === 'errors' && <ErrorLog />}
+      {tab === 'users' && superAdmin && <AdminUsers />}
+      {tab === 'overview' && (
+        <>
       <p className="fine">
         Page views, visitors, referrers and devices are also in Vercel → sceneshare → Analytics. Raw rows: Neon tables events, api_log, leads, properties, designs, renders.
       </p>
@@ -104,8 +132,6 @@ export default function Admin() {
           </li>
         ))}
       </ul>
-
-      <ErrorLog />
 
       {o.engagement && <EngagementPanel e={o.engagement} />}
 
@@ -184,6 +210,8 @@ export default function Admin() {
           <Table rows={o.leads} cols={[['Last seen', (r) => when(r.last_seen)], ['Email', (r) => r.email], ['Source', (r) => r.source || r.first_context || ''], ['Where', (r) => [r.region, r.country].filter(Boolean).join(', ')]]} />
         </section>
       </div>
+        </>
+      )}
     </main>
   )
 }
