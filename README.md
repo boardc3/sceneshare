@@ -50,7 +50,6 @@ Verified on production, 2026-11-04:
 | `STRIPE_SECRET_KEY` | Stripe secret key. `sk_test_…` = test mode, no real charges. `sk_live_…` is refused unless `STRIPE_ALLOW_LIVE=1` | for payments |
 | `STRIPE_WEBHOOK_SECRET` | signing secret of the webhook endpoint `https://www.sceneshare.app/api/billing?webhook=1` | for payments |
 | `STRIPE_ALLOW_LIVE` | `1` to accept a live key (real charges) | at launch |
-| `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_YEARLY` | optional Stripe price ids; without them Checkout uses $50/month and $500/year inline | no |
 
 Tables create themselves on first use. `/api/health` shows which features are switched on.
 Maps are Mapbox GL JS (`mapbox-gl` 3.33.0, its own lazily loaded chunk), with the token served from
@@ -59,11 +58,16 @@ Leaflet/Esri rule for this project, at Chris's request (2026-11-04).
 
 ## Plans and billing
 
-Free: 1 home, 2 designs per home, 5 emailed shares per home (copied links unlimited).
-Pro: $50/month or $500/year, unlimited, with a fair-use cap of 40 house restyles per 30 days.
-Admins (`ADMIN_EMAILS`) are always Pro. Limits are enforced on the server (`api/_lib/billing.js`)
-and answered with HTTP 402 `plan_limit`, which opens the upgrade prompt. The nav badge and
-`/plan` show the plan, homes left or days left. Plan state lives on `users`; every billing
+New accounts get a 14-day free trial (2 homes, 50 render credits, 10 emailed shares per home).
+Entry: $49/month or $490/year, 2 homes, 150 render credits a month.
+Premium: $99/month or $990/year, 5 homes, 300 render credits a month; each add-on
+($75/month or $750/year) adds 5 homes and 150 credits.
+One credit = one rendered image; credit packs (100 for $15, 500 for $60) never expire.
+After the trial with no plan, existing share links keep working but nothing new can be added.
+Admins (`ADMIN_EMAILS`) are always Premium, unmetered. Limits are enforced on the server
+(`api/_lib/billing.js`) and answered with HTTP 402 `plan_limit`, which opens the plan prompt.
+The nav credit meter and `/plan` show plan, credits, homes and days left. Stripe products
+(Entry, Premium, add-on) are created on first checkout and found by `metadata.ss_key`. Plan state lives on `users`; every billing
 action and webhook is logged in `billing_events` and shown on `/admin`.
 
 Going from preview to payments:
@@ -75,7 +79,7 @@ Going from preview to payments:
 4. Set `BILLING_MODE=stripe`, redeploy. Test with card 4242 4242 4242 4242.
 5. At launch: live keys + a live webhook, `STRIPE_ALLOW_LIVE=1`, redeploy.
 
-Preview upgrades stop counting once Stripe is on (and the reverse), so nobody keeps a free Pro.
+Preview upgrades stop counting once Stripe is on (and the reverse), so nobody keeps a free plan.
 
 ## What gets saved (Neon)
 

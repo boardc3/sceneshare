@@ -146,19 +146,19 @@ function Terms() {
 
       <h2 id="subscriptions">10. Plans, subscriptions and automatic renewal</h2>
       <p>
-        Sceneshare has a free plan and a paid plan, <strong>Sceneshare Pro</strong>. The current prices, what each plan includes and its limits are shown on the{' '}
+        New accounts start with a <strong>14-day free trial</strong>. After it, Sceneshare is offered on paid plans, <strong>Entry</strong> and <strong>Premium</strong>, with optional Premium add-ons. The current prices, what each plan includes and its limits are shown on the{' '}
         <Link to="/plan">Plan and billing</Link> page before you subscribe.
       </p>
       <ul>
         <li>
-          <strong>Automatic renewal.</strong> Pro is a subscription that <strong>renews automatically</strong> at the end of each monthly or yearly period, at the
+          <strong>Automatic renewal.</strong> Each paid plan is a subscription that <strong>renews automatically</strong> at the end of each monthly or yearly period, at the
           price shown when you subscribed, and is charged to the payment method you gave, <strong>until you cancel</strong>. We will tell you before any price
           change takes effect, and you can cancel before it applies.
         </li>
         <li>
           <strong>Cancelling.</strong> You can cancel online at any time from the Plan and billing page, with no need to contact us. Cancelling stops the next
-          renewal; Pro stays on until the end of the period you have paid for, then your account moves to the free plan. Your homes and designs are kept, but
-          free-plan limits apply to new ones.
+          renewal; your plan stays on until the end of the period you have paid for. After that your homes, designs and share links are kept, but you cannot add
+          homes, render or send shares until you choose a plan again.
         </li>
         <li>
           <strong>Refunds.</strong> Payments are not refundable for partial periods, except where the law requires it or we decide otherwise. If something went
@@ -166,12 +166,13 @@ function Terms() {
         </li>
         <li>
           <strong>Payments.</strong> Payments are processed by Stripe, which receives your card details directly; we never see or store your full card number. If a
-          renewal payment fails, Stripe may retry it, and Pro may end if the payment cannot be collected.
+          renewal payment fails, Stripe may retry it, and your plan may end if the payment cannot be collected.
         </li>
         <li>
-          <strong>Limits and render credits.</strong> The free plan is limited in the number of homes, designs per home and emailed shares per home. Each
+          <strong>Limits and render credits.</strong> Each plan includes a number of homes (the trial and Entry: 2; Premium: 5, plus 5 per add-on). Each
           rendered image (a restyle, a clean-up or a requested change) uses one render credit; automatic retries we run to keep a room aligned do not. Each plan
-          includes a monthly allotment of credits (Pro: 300 a month), which resets at the start of each monthly cycle and does not roll over. Extra credits can be
+          includes an allotment of credits (the trial: 50; Entry: 150 a month; Premium: 300 a month, plus 150 per add-on), which resets at the start of each
+          monthly cycle and does not roll over. Changing plan or add-ons part-way through a period is prorated by our payment provider. Extra credits can be
           bought in packs; bought credits do not expire while your account is open, are used only after the monthly allotment, and are not refundable except where
           the law requires. A render that fails returns its credit.
         </li>
@@ -347,7 +348,7 @@ function Privacy() {
         <li><strong>Google</strong> — the Gemini image model (receives the photographs and instructions needed to generate each design); Google sign-in if you choose it; Google Fonts (your browser requests fonts from Google, which receives your IP address).</li>
         <li><strong>Mapbox</strong> — maps, address search and nearby places (receives the addresses you search and, from your browser, map requests).</li>
         <li><strong>ScraperAPI</strong> — retrieves public listing pages for the address you entered.</li>
-        <li><strong>Stripe</strong> — payments for Sceneshare Pro (receives your name, email, payment details and billing address when you subscribe).</li>
+        <li><strong>Stripe</strong> — payments for Sceneshare subscriptions and credit packs (receives your name, email, payment details and billing address when you subscribe).</li>
         <li><strong>Resend</strong> — sends the share emails you ask us to send (receives the recipient addresses, your name and your message), and the requests asking a sharer to accept the Terms.</li>
       </ul>
       <p>

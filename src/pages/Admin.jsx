@@ -173,7 +173,7 @@ export default function Admin() {
       <div className="admin__cols">
         <section>
           <h2>Accounts</h2>
-          <Table rows={o.users} cols={[['Joined', (r) => when(r.created_at)], ['Email', (r) => r.email], ['Verified', (r) => (r.email_verified ? 'yes' : 'no')], ['Plan', (r) => (r.plan === 'pro' ? `Pro (${r.plan_source || ''}${r.period_end ? `, to ${when(r.period_end)}` : ''})` : 'Free')], ['Last seen', (r) => when(r.last_seen_at)]]} />
+          <Table rows={o.users} cols={[['Joined', (r) => when(r.created_at)], ['Email', (r) => r.email], ['Verified', (r) => (r.email_verified ? 'yes' : 'no')], ['Plan', (r) => (r.plan && r.plan !== 'free' ? `${r.plan === 'pro' ? 'Premium' : r.plan[0].toUpperCase() + r.plan.slice(1)} (${r.plan_source || ''}${r.period_end ? `, to ${when(r.period_end)}` : ''})` : 'Trial / none')], ['Last seen', (r) => when(r.last_seen_at)]]} />
         </section>
         <section>
           <h2>Emails</h2>

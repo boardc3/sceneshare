@@ -67,8 +67,6 @@ export const config = {
   stripeKey: String(env.STRIPE_SECRET_KEY || '').trim().replace(/^['"]|['"]$/g, ''),
   stripeWebhookSecret: String(env.STRIPE_WEBHOOK_SECRET || '').trim().replace(/^['"]|['"]$/g, ''),
   stripeAllowLive: /^(1|true|yes)$/i.test(env.STRIPE_ALLOW_LIVE || ''),
-  stripePriceMonthly: env.STRIPE_PRICE_MONTHLY || '',
-  stripePriceYearly: env.STRIPE_PRICE_YEARLY || '',
 }
 
 // The Terms an account accepts before its homes can be shared. Bump when the

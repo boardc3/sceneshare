@@ -48,7 +48,8 @@ export default function CreditMeter() {
 
   if (!b || b.mode === 'off' || !c) return null
 
-  const pro = b.plan === 'pro'
+  const pro = b.plan === 'premium'
+  const paid = b.paid
   const unlimited = c.unlimited
   const share = unlimited ? 1 : c.allotment ? c.planLeft / c.allotment : 0
   const low = !unlimited && c.available <= Math.max(5, c.allotment * 0.1)
@@ -75,12 +76,13 @@ export default function CreditMeter() {
   }
 
   let sub = ''
-  if (pro && b.source === 'admin') sub = t('plan.badge.admin')
-  else if (pro && b.daysLeft != null) sub = t(b.cancelAtPeriodEnd ? 'credits.subEnds' : 'credits.subRenews', { n: b.daysLeft, date: date(b.periodEnd) })
-  else if (!pro) sub = left != null ? t(left === 1 ? 'plan.badge.home' : 'plan.badge.homes', { n: left }) : ''
+  if (b.source === 'admin') sub = t('plan.badge.admin')
+  else if (paid && b.daysLeft != null) sub = t(b.cancelAtPeriodEnd ? 'credits.subEnds' : 'credits.subRenews', { n: b.daysLeft, date: date(b.periodEnd) })
+  else if (b.plan === 'trial' && b.trial) sub = t('credits.subTrial', { n: b.trial.daysLeft, date: date(b.trial.endsAt) })
+  else if (b.plan === 'none') sub = t('plan.expiredTitle')
 
   return (
-    <div className={`cmeter ${open ? 'is-open' : ''} ${low ? 'cmeter--low' : ''} ${empty ? 'cmeter--empty' : ''} ${pro ? 'cmeter--pro' : ''}`} ref={box} onPointerEnter={enter} onPointerLeave={leave} onBlur={(e) => !box.current?.contains(e.relatedTarget) && setOpen(false)}>
+    <div className={`cmeter ${open ? 'is-open' : ''} ${low ? 'cmeter--low' : ''} ${empty ? 'cmeter--empty' : ''} ${paid || b.source === 'admin' ? 'cmeter--pro' : ''} cmeter--${b.plan}`} ref={box} onPointerEnter={enter} onPointerLeave={leave} onBlur={(e) => !box.current?.contains(e.relatedTarget) && setOpen(false)}>
       <button
         type="button"
         className="cmeter__btn"
@@ -97,13 +99,13 @@ export default function CreditMeter() {
         </svg>
         <span className={`cmeter__n ${bump ? 'is-bump' : ''}`}>{unlimited ? '∞' : fmt(c.available)}</span>
         <span className="cmeter__unit">{t('credits.unit')}</span>
-        <span className="cmeter__plan">{pro ? 'Pro' : t('plan.free')}</span>
+        <span className="cmeter__plan">{t(`plan.short.${b.plan}`)}</span>
       </button>
 
       <div className="cmeter__panel" id={panelId} role="dialog" aria-label={t('credits.title')} hidden={!open}>
         <div className="cmeter__head">
           <div>
-            <p className="cmeter__eyebrow">{pro ? 'Sceneshare Pro' : t('plan.freeName')}</p>
+            <p className="cmeter__eyebrow">{b.plan === 'none' ? t('plan.name.none') : `Sceneshare ${t(`plan.name.${b.plan}`)}`}{b.addons > 0 ? ` ${t(b.addons === 1 ? 'plan.addonsOne' : 'plan.addonsMany', { n: b.addons })}` : ''}</p>
             {sub && <p className="cmeter__sub">{sub}</p>}
           </div>
           {(b.mode === 'preview' || b.mode === 'test') && <span className="cmeter__mode">{t(`plan.mode.${b.mode}.short`)}</span>}
@@ -120,8 +122,14 @@ export default function CreditMeter() {
               <span className="cmeter__bar-left" style={{ width: `${share * 100}%` }} />
             </div>
             <dl className="cmeter__rows">
+              {b.limits?.homes != null && (
+                <div>
+                  <dt>{t('plan.m.homes')}</dt>
+                  <dd>{t('credits.homesOf', { n: b.usage?.homes ?? 0, max: b.limits.homes, left })}</dd>
+                </div>
+              )}
               <div>
-                <dt>{t('credits.monthly')}</dt>
+                <dt>{t(b.plan === 'trial' ? 'credits.trialCredits' : 'credits.monthly')}</dt>
                 <dd>
                   {t('credits.ofLeft', { n: fmt(c.planLeft), max: fmt(c.allotment) })}
                 </dd>
@@ -131,8 +139,8 @@ export default function CreditMeter() {
                 <dd>{c.packs > 0 ? t('credits.extraN', { n: fmt(c.packs) }) : '—'}</dd>
               </div>
               <div>
-                <dt>{t('credits.resets')}</dt>
-                <dd>{t('credits.resetsIn', { n: c.resetsInDays, date: date(c.resetsAt, !pro) })}</dd>
+                <dt>{t(b.plan === 'trial' ? 'credits.trialEnds' : 'credits.resets')}</dt>
+                <dd>{t('credits.resetsIn', { n: c.resetsInDays, date: date(c.resetsAt, !paid && b.plan !== 'trial') })}</dd>
               </div>
               <div>
                 <dt>{t('credits.usedCycle')}</dt>
@@ -143,13 +151,13 @@ export default function CreditMeter() {
         )}
         <p className="cmeter__fine">{t('credits.explain')}</p>
         <div className="cmeter__actions">
-          {!unlimited && (
+          {!unlimited && b.plan !== 'none' && (
             <Link to="/plan#credits" className="btn btn--glow btn--small" onClick={() => (setOpen(false), track('credits_meter_buy'))}>
               {t('credits.buyMore')}
             </Link>
           )}
           <Link to="/plan" className="btn btn--quiet btn--small" onClick={() => setOpen(false)}>
-            {pro ? t('credits.managePlan') : t('plan.seePro')}
+            {paid ? t('credits.managePlan') : t('plan.seePlans')}
           </Link>
         </div>
       </div>

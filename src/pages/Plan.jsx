@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
-import { buyCredits, homesLeft, loadBilling, manageBilling, periodShare, setCancel, upgrade, useBilling } from '../lib/billing.js'
+import { buyCredits, changePlan, loadBilling, manageBilling, periodShare, planPrice, setCancel, subscribe, useBilling } from '../lib/billing.js'
 import { Link, useRouter } from '../router.jsx'
 
 const money = (cents, lang) => new Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100)
@@ -30,7 +30,7 @@ function Meter({ label, used, limit, t }) {
 export default function Plan() {
   const { t, lang } = useI18n()
   const { user, ready } = useAuth()
-  const { billing: b, plans, prices, packs } = useBilling()
+  const { billing: b, plans, prices, packs, addon } = useBilling()
   const { navigate } = useRouter()
   const [busy, setBusy] = useState(null)
   const [msg, setMsg] = useState(null)
@@ -49,7 +49,7 @@ export default function Plan() {
       if (creditsBack === 'cancel') setMsg({ ok: false, text: t('credits.canceled') })
       if (creditsBack) navigate('/plan#credits', { replace: true })
       if (back === 'success') {
-        setMsg({ ok: true, text: nb?.plan === 'pro' ? t('plan.welcome') : t('plan.processing') })
+        setMsg({ ok: true, text: nb?.paid ? t('plan.welcome', { plan: t(`plan.name.${nb.plan}`) }) : t('plan.processing') })
         track('upgrade_done', { mode: nb?.mode })
       }
       if (back === 'cancel') setMsg({ ok: false, text: t('plan.checkoutCanceled') })
@@ -82,26 +82,23 @@ export default function Plan() {
   }
   if (!b) return <main id="main" className="page page--center"><span className="spinner" aria-hidden="true" /></main>
 
-  const pro = b.plan === 'pro'
-  const run = async (key, fn) => {
+  const paid = b.paid
+  const run = async (key, fn, done) => {
     setBusy(key)
     setMsg(null)
     try {
       const r = await fn()
       if (r?.redirecting) return // off to Stripe
-      if (key === 'month' || key === 'year') setMsg({ ok: true, text: t('plan.welcome') })
-      if (key === 'cancel') setMsg({ ok: true, text: t('plan.canceledMsg', { date: day(r.periodEnd, lang) }) })
-      if (key === 'resume') setMsg({ ok: true, text: t('plan.resumedMsg') })
-      if (key.startsWith('pack:')) setMsg({ ok: true, text: t('credits.bought', { n: packs?.[key.slice(5)]?.credits ?? '' }) })
+      if (done) setMsg({ ok: true, text: done(r) })
     } catch (e) {
       setMsg({ ok: false, text: e.message || t('err.generic') })
     }
     setBusy(null)
   }
   const share = periodShare(b)
-  const left = homesLeft(b)
   const managed = b.mode === 'test' || b.mode === 'live'
-  const yearSave = prices ? prices.month.amount * 12 - prices.year.amount : 10000
+  const planName = t(`plan.name.${b.plan}`)
+  const big = b.plan === 'trial' ? b.trial?.daysLeft : paid && b.source !== 'admin' ? b.daysLeft : null
 
   return (
     <main id="main" className="page plan">
@@ -121,67 +118,75 @@ export default function Plan() {
           {msg.text}
         </p>
       )}
+      {b.plan === 'none' && (
+        <section className="plan__expired" role="alert">
+          <h2>{t('plan.expiredTitle')}</h2>
+          <p>{t('plan.expiredBody')}</p>
+        </section>
+      )}
 
       <section className="settings__card plan__current" aria-labelledby="p-current">
         <div className="plan__head">
           <div>
             <p className="plan__label">{t('plan.current')}</p>
-            <h2 id="p-current">{pro ? 'Sceneshare Pro' : t('plan.freeName')}</h2>
+            <h2 id="p-current">
+              {b.plan === 'none' ? planName : `Sceneshare ${planName}`}
+              {b.addons > 0 && <span className="plan__addons"> {t(b.addons === 1 ? 'plan.addonsOne' : 'plan.addonsMany', { n: b.addons })}</span>}
+            </h2>
           </div>
-          {pro && b.daysLeft != null && (
+          {big != null && (
             <div className="plan__days">
-              <strong>{b.daysLeft}</strong>
-              <span>{t('plan.daysLeft', { n: b.daysLeft })}</span>
-            </div>
-          )}
-          {!pro && left != null && (
-            <div className="plan__days">
-              <strong>{left}</strong>
-              <span>{t(left === 1 ? 'plan.homeLeft' : 'plan.homesLeft')}</span>
+              <strong>{big}</strong>
+              <span>{b.plan === 'trial' ? t('plan.trialDaysLeft') : t('plan.daysLeft')}</span>
             </div>
           )}
         </div>
 
-        {pro && b.source === 'admin' && <p className="fine">{t('plan.adminNote')}</p>}
-        {pro && share != null && (
+        {b.source === 'admin' && <p className="fine">{t('plan.adminNote')}</p>}
+        {b.plan === 'trial' && <p className="fine">{t('plan.trialBody', { h: b.limits.homes, c: b.limits.credits })}</p>}
+        {share != null && (b.plan === 'trial' || (paid && b.source !== 'admin')) && (
           <>
-            <div className="meter__bar meter__bar--time" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)} aria-label={t('plan.daysLeft', { n: b.daysLeft })}>
+            <div className="meter__bar meter__bar--time" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)} aria-label={t('plan.daysLeft')}>
               <span style={{ width: `${share * 100}%` }} />
             </div>
-            <p className="fine">
-              {b.cancelAtPeriodEnd ? t('plan.endsOn', { date: day(b.periodEnd, lang) }) : t('plan.renewsOn', { date: day(b.periodEnd, lang), price: money(b.interval === 'year' ? prices?.year.amount || 50000 : prices?.month.amount || 5000, lang), per: t(b.interval === 'year' ? 'plan.perYear' : 'plan.perMonth') })}
-              {b.status === 'past_due' && <> {t('plan.pastDue')}</>}
-            </p>
+            {paid && (
+              <p className="fine">
+                {b.cancelAtPeriodEnd ? t('plan.endsOn', { date: day(b.periodEnd, lang) }) : t('plan.renewsOn', { date: day(b.periodEnd, lang), price: money(planPrice(prices, b.plan, b.interval === 'year' ? 'year' : 'month', b.addons), lang), per: t(b.interval === 'year' ? 'plan.perYear' : 'plan.perMonth') })}
+                {b.status === 'past_due' && <> {t('plan.pastDue')}</>}
+              </p>
+            )}
           </>
         )}
 
         <div className="plan__meters">
           <Meter t={t} label={t('plan.m.homes')} used={b.usage.homes} limit={b.limits.homes} />
           {b.credits && !b.credits.unlimited && <Meter t={t} label={t('plan.m.credits')} used={b.credits.used} limit={b.credits.allotment} />}
-          {!pro && <p className="fine">{t('plan.freeRules', { d: b.limits.designsPerHome, e: b.limits.emailsPerHome })}</p>}
         </div>
 
         <div className="settings__row plan__actions">
-          {pro && managed && b.source === 'stripe' && (
+          {paid && managed && b.source === 'stripe' && (
             <button type="button" className="btn btn--ink btn--small" disabled={!!busy} onClick={() => run('portal', manageBilling)}>
               {busy === 'portal' ? t('auth.working') : t('plan.manage')}
             </button>
           )}
-          {pro && b.mode === 'preview' && b.source === 'preview' && (
-            b.cancelAtPeriodEnd ? (
-              <button type="button" className="btn btn--ink btn--small" disabled={!!busy} onClick={() => run('resume', () => setCancel(false))}>
+          {paid && b.mode === 'preview' && b.source === 'preview' &&
+            (b.cancelAtPeriodEnd ? (
+              <button type="button" className="btn btn--ink btn--small" disabled={!!busy} onClick={() => run('resume', () => setCancel(false), () => t('plan.resumedMsg'))}>
                 {t('plan.resume')}
               </button>
             ) : (
-              <button type="button" className="btn btn--quiet btn--small" disabled={!!busy} onClick={() => window.confirm(t('plan.cancelConfirm')) && run('cancel', () => setCancel(true))}>
+              <button type="button" className="btn btn--quiet btn--small" disabled={!!busy} onClick={() => window.confirm(t('plan.cancelConfirm')) && run('cancel', () => setCancel(true), (r) => t('plan.canceledMsg', { date: day(r.periodEnd, lang) }))}>
                 {t('plan.cancel')}
               </button>
-            )
-          )}
+            ))}
         </div>
       </section>
 
-      {b.credits && !b.credits.unlimited && packs && (
+      {b.source !== 'admin' && b.mode !== 'off' && prices && (
+        <Tiers b={b} prices={prices} plans={plans} addon={addon} busy={busy} run={run} managed={managed} />
+      )}
+
+      {b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && (
         <section className="settings__card credits" id="credits" aria-labelledby="p-credits">
           <div className="plan__head">
             <div>
@@ -192,17 +197,21 @@ export default function Plan() {
             </div>
             <div className="plan__days">
               <strong>{b.credits.resetsInDays}</strong>
-              <span>{t('credits.daysToReset', { date: new Date(b.credits.resetsAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', day: 'numeric', ...(pro ? {} : { timeZone: 'UTC' }) }) })}</span>
+              <span>{t('credits.daysToReset', { date: new Date(b.credits.resetsAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', day: 'numeric', ...(paid || b.plan === 'trial' ? {} : { timeZone: 'UTC' }) }) })}</span>
             </div>
           </div>
           <p>{t('credits.sectionBody', { n: b.credits.allotment })}</p>
-          {b.credits.packs > 0 && <p className="fine">{t('credits.extra')}: {t('credits.extraN', { n: b.credits.packs })}</p>}
+          {b.credits.packs > 0 && (
+            <p className="fine">
+              {t('credits.extra')}: {t('credits.extraN', { n: b.credits.packs })}
+            </p>
+          )}
           <div className="credits__packs">
             {Object.entries(packs).map(([key, pk]) => (
               <article key={key} className="credits__pack">
                 <h3>{t('credits.pack', { n: pk.credits })}</h3>
                 <p className="fine">{t('credits.packPer', { price: new Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 3 }).format(pk.amount / 100 / pk.credits) })}</p>
-                <button type="button" className="btn btn--ink btn--small" disabled={!!busy} onClick={() => run(`pack:${key}`, () => buyCredits(key))}>
+                <button type="button" className="btn btn--ink btn--small" disabled={!!busy} onClick={() => run(`pack:${key}`, () => buyCredits(key), () => t('credits.bought', { n: pk.credits }))}>
                   {busy === `pack:${key}` ? t('auth.working') : t('credits.buyPack', { price: money(pk.amount, lang) })}
                 </button>
               </article>
@@ -212,44 +221,100 @@ export default function Plan() {
         </section>
       )}
 
-      {!pro && (
-        <section className="plan__grid" aria-label={t('plan.compare')}>
-          <article className="plan__card">
-            <h2>{t('plan.freeName')}</h2>
-            <p className="plan__price">{money(0, lang)}</p>
-            <ul>
-              {['f1', 'f2', 'f5', 'f3', 'f4'].map((k) => (
-                <li key={k}>{t(`plan.free.${k}`, { d: plans?.free.designsPerHome ?? 2, e: plans?.free.emailsPerHome ?? 5, c: plans?.free.credits ?? 30 })}</li>
-              ))}
-            </ul>
-            <p className="fine">{t('plan.youAreHere')}</p>
-          </article>
-          <article className="plan__card plan__card--pro">
-            <h2>Sceneshare Pro</h2>
-            <p className="plan__price">
-              {money(prices?.month.amount || 5000, lang)} <span>{t('plan.perMonth')}</span>
-            </p>
-            <ul>
-              {['p0', 'p1', 'p2', 'p3', 'p4', 'p5'].map((k) => (
-                <li key={k}>{t(`plan.pro.${k}`)}</li>
-              ))}
-            </ul>
-            <div className="plan__buy">
-              <button type="button" className="btn btn--glow" disabled={!!busy} onClick={() => run('month', () => upgrade('month'))}>
-                {busy === 'month' ? t('auth.working') : t('plan.buyMonth', { price: money(prices?.month.amount || 5000, lang) })}
-              </button>
-              <button type="button" className="btn btn--quiet" disabled={!!busy} onClick={() => run('year', () => upgrade('year'))}>
-                {busy === 'year' ? t('auth.working') : t('plan.buyYear', { price: money(prices?.year.amount || 50000, lang), save: money(yearSave, lang) })}
-              </button>
-            </div>
-            <p className="fine">{t(managed ? 'plan.secure' : 'plan.previewNote')}</p>
-          </article>
-        </section>
-      )}
-
       <p className="fine plan__legal">
         {t('plan.legal')} <Link to="/terms#subscriptions">{t('legal.terms')}</Link>
       </p>
     </main>
+  )
+}
+
+// Entry and Premium side by side, monthly or yearly, with Premium's add-on stepper.
+function Tiers({ b, prices, plans, addon, busy, run, managed }) {
+  const { t, lang } = useI18n()
+  const paid = b.paid
+  const [interval, setIv] = useState(paid && b.interval === 'year' ? 'year' : 'month')
+  const [addons, setAddons] = useState(b.plan === 'premium' ? b.addons : 0)
+  const per = t(interval === 'year' ? 'plan.perYear' : 'plan.perMonth')
+  const short = t(interval === 'year' ? 'plan.yr' : 'plan.mo')
+  const extra = addon || { homes: 5, credits: 150, max: 10 }
+  const locked = paid && b.source === 'stripe'
+  const tiers = ['entry', 'premium']
+
+  return (
+    <section className="tiers" aria-labelledby="p-choose">
+      <div className="tiers__head">
+        <h2 id="p-choose">{t('plan.choose')}</h2>
+        <div className="segmented" role="group" aria-label={t('plan.choose')}>
+          {['month', 'year'].map((iv) => (
+            <button key={iv} type="button" aria-pressed={interval === iv} disabled={locked && iv !== interval} onClick={() => setIv(iv)}>
+              {t(iv === 'year' ? 'plan.yearly' : 'plan.monthly')}
+              {iv === 'year' && <span className="tiers__save">{t('plan.yearlySave')}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+      {locked && <p className="fine">{t('plan.intervalLocked')}</p>}
+      <div className="tiers__grid">
+        {tiers.map((tier) => {
+          const p = plans?.[tier] || { homes: tier === 'entry' ? 2 : 5, credits: tier === 'entry' ? 150 : 300 }
+          const n = tier === 'premium' ? addons : 0
+          const price = planPrice(prices, tier, interval, n)
+          const current = paid && b.plan === tier
+          const sameAddons = current && b.addons === n
+          const key = `tier:${tier}`
+          let label
+          if (!paid) label = t('plan.start', { plan: t(`plan.name.${tier}`), price: `${money(price, lang)}${short}` })
+          else if (!current) label = t('plan.switch', { plan: t(`plan.name.${tier}`), price: `${money(price, lang)}${short}` })
+          else if (!sameAddons) label = t('plan.update', { price: `${money(price, lang)}${short}` })
+          const act = () =>
+            !paid
+              ? run(key, () => subscribe({ tier, interval, addons: n }), () => t('plan.welcome', { plan: t(`plan.name.${tier}`) }))
+              : run(key, () => changePlan({ tier, addons: n }), () => t('plan.changed', { plan: t(`plan.name.${tier}`) }))
+          return (
+            <article key={tier} className={`plan__card tiers__card ${tier === 'premium' ? 'plan__card--pro' : ''} ${current ? 'is-current' : ''}`}>
+              <p className="plan__label">{t(`plan.tier.${tier}.tag`)}</p>
+              <h3>{t(`plan.name.${tier}`)}</h3>
+              <p className="plan__price">
+                {money(prices[tier][interval], lang)} <span>{per}</span>
+              </p>
+              <ul>
+                <li>{t('plan.f.homes', { n: p.homes + n * extra.homes })}</li>
+                <li>{t('plan.f.credits', { n: p.credits + n * extra.credits })}</li>
+                <li>{t('plan.f.designs')}</li>
+                <li>{t('plan.f.emails')}</li>
+                <li>{t('plan.f.tracking')}</li>
+                <li>{t('plan.f.lang')}</li>
+              </ul>
+              {tier === 'premium' && (
+                <div className="addon">
+                  <div className="addon__row">
+                    <span className="addon__label">{t('plan.addon.label')}</span>
+                    <div className="stepper">
+                      <button type="button" aria-label={t('plan.addon.less')} disabled={addons <= 0} onClick={() => setAddons((x) => Math.max(0, x - 1))}>
+                        −
+                      </button>
+                      <output aria-live="polite">{addons}</output>
+                      <button type="button" aria-label={t('plan.addon.more')} disabled={addons >= extra.max} onClick={() => setAddons((x) => Math.min(extra.max, x + 1))}>
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <p className="fine">{t('plan.addon.each', { price: money(prices.addon[interval], lang), per })}</p>
+                  {addons > 0 && <p className="addon__total">{t('plan.addon.total', { homes: p.homes + addons * extra.homes, credits: p.credits + addons * extra.credits })} · {money(price, lang)} {per}</p>}
+                </div>
+              )}
+              {label ? (
+                <button type="button" className={`btn ${tier === 'premium' ? 'btn--glow' : 'btn--ink'}`} disabled={!!busy} onClick={act}>
+                  {busy === key ? t('auth.working') : label}
+                </button>
+              ) : (
+                <p className="tiers__current">{t('plan.thisPlan')}</p>
+              )}
+            </article>
+          )
+        })}
+      </div>
+      <p className="fine">{t(managed ? 'plan.secure' : 'plan.previewNote')}</p>
+    </section>
   )
 }

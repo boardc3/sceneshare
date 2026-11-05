@@ -71,7 +71,7 @@ async function write(req, res) {
   res._meta = { propertyId: id, op }
   const lang = body.lang === 'zh' ? 'zh' : 'en'
   // Single-photo edits don't use up a Free plan's whole-house designs (they still count toward fair use).
-  if (op === 'design.create') await assertCanAddDesign(user, id, { photoOnly: Array.isArray(body.photoIds) })
+  if (op === 'design.create') await assertCanAddDesign(user, id)
 
   if (op === 'property.delete') {
     await deleteProperty(id)

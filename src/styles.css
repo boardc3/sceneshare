@@ -3995,3 +3995,160 @@ body.is-modal {
 .credits__pack .fine {
   margin: 0 0 6px;
 }
+
+/* ---------------------------------------------------------------- plan tiers */
+.plan__expired {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: #fbf0e6;
+  border: 1px solid #ecc9a6;
+}
+.plan__expired h2 {
+  font-size: var(--step-1);
+  margin: 0 0 4px;
+}
+.plan__expired p {
+  margin: 0;
+}
+.plan__addons {
+  font-family: var(--sans);
+  font-size: var(--step-0);
+  color: var(--muted);
+}
+.tiers {
+  margin-top: 28px;
+  scroll-margin-top: 90px;
+}
+.tiers__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.tiers__head h2 {
+  font-size: var(--step-2);
+  margin: 0;
+}
+.segmented {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.segmented button[aria-pressed='true'] {
+  background: var(--dusk);
+  color: var(--paper);
+}
+.segmented button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.tiers__save {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--glow);
+  color: var(--dusk);
+  font-size: 0.72rem;
+}
+.tiers__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.tiers__card h3 {
+  font-size: var(--step-2);
+  margin: 0;
+}
+.tiers__card ul {
+  margin: 0;
+}
+.tiers__card.is-current {
+  box-shadow: 0 0 0 3px var(--glow);
+}
+.tiers__card .btn {
+  justify-self: start;
+}
+.tiers__current {
+  margin: 0;
+  font-weight: 700;
+  color: var(--glow);
+}
+.addon {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(248, 249, 247, 0.18);
+  display: grid;
+  gap: 6px;
+}
+.addon__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.addon__label {
+  font-weight: 600;
+}
+.addon .fine {
+  margin: 0;
+  color: inherit;
+  opacity: 0.8;
+}
+.addon__total {
+  margin: 0;
+  font-weight: 600;
+  color: var(--glow);
+}
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 249, 247, 0.35);
+}
+.stepper button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+.stepper button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.stepper button:focus-visible {
+  outline: 2px solid var(--glow);
+}
+.stepper output {
+  min-width: 26px;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 720px) {
+  .tiers__grid {
+    grid-template-columns: 1fr;
+  }
+}

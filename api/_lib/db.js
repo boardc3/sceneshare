@@ -242,7 +242,7 @@ async function migrate(s) {
   )`
   await s`create index if not exists terms_requests_property_idx on terms_requests (property_id, at desc)`
   // Billing (see api/_lib/billing.js). One subscription per account.
-  for (const col of ['plan text', 'plan_status text', 'plan_source text', 'plan_interval text', 'period_end timestamptz', 'cancel_at_period_end boolean', 'stripe_customer_id text', 'stripe_subscription_id text', 'plan_updated_at timestamptz']) {
+  for (const col of ['plan text', 'plan_status text', 'plan_source text', 'plan_interval text', 'period_end timestamptz', 'cancel_at_period_end boolean', 'stripe_customer_id text', 'stripe_subscription_id text', 'plan_updated_at timestamptz', 'plan_addons int']) {
     await s.query(`alter table users add column if not exists ${col}`)
   }
   await s`create table if not exists billing_events (
@@ -343,7 +343,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 8
+const SCHEMA_VERSION = 9
 
 async function upToDate(s) {
   try {
@@ -849,13 +849,13 @@ export async function adminOverview() {
 
 // ---------------------------------------------------------------- billing
 
-const PLAN_COLS = { plan: 'plan', status: 'plan_status', source: 'plan_source', interval: 'plan_interval', periodEnd: 'period_end', cancelAtPeriodEnd: 'cancel_at_period_end', customerId: 'stripe_customer_id', subscriptionId: 'stripe_subscription_id' }
+const PLAN_COLS = { plan: 'plan', status: 'plan_status', source: 'plan_source', interval: 'plan_interval', periodEnd: 'period_end', cancelAtPeriodEnd: 'cancel_at_period_end', customerId: 'stripe_customer_id', subscriptionId: 'stripe_subscription_id', addons: 'plan_addons' }
 
 export async function getBillingRow(userId) {
   const s = await ensure()
   if (!s) return null
-  const [row] = await s`select id, email, plan, plan_status, plan_source, plan_interval, period_end, cancel_at_period_end,
-      stripe_customer_id, stripe_subscription_id, plan_updated_at from users where id = ${userId}`
+  const [row] = await s`select id, email, created_at, plan, plan_status, plan_source, plan_interval, period_end, cancel_at_period_end,
+      stripe_customer_id, stripe_subscription_id, plan_updated_at, coalesce(plan_addons, 0)::int as plan_addons from users where id = ${userId}`
   return row || null
 }
 

@@ -217,7 +217,7 @@ export function UpgradePrompt() {
             navigate(info.limit === 'credits' ? '/plan#credits' : '/plan')
           }}
         >
-          {info.limit === 'credits' ? t('credits.buyMore') : t('plan.seePro')}
+          {info.limit === 'credits' ? t('credits.buyMore') : t('plan.seePlans')}
         </button>
         <button type="button" className="btn btn--quiet" onClick={close}>
           {t('plan.notNow')}
