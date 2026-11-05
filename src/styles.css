@@ -2932,3 +2932,83 @@ body.is-modal {
 .unitmodal__other .field {
   flex: 1 1 12rem;
 }
+
+/* ---------------------------------------------------------------- loading states */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.skeleton,
+.thumbimg--loading,
+.compare--loading {
+  background: linear-gradient(100deg, #dfe4e2 20%, #eef1f0 40%, #dfe4e2 60%) !important;
+  background-size: 200% 100% !important;
+  animation: shimmer 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .thumbimg--loading,
+  .compare--loading {
+    animation: none;
+  }
+}
+.skeleton {
+  display: block;
+  border-radius: 6px;
+}
+.skeleton--thumb {
+  aspect-ratio: 3 / 2;
+}
+.skeleton--frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+}
+.viewer__empty--loading {
+  position: relative;
+  overflow: hidden;
+  border-style: solid;
+}
+.viewer__empty--loading p {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+}
+.thumbimg {
+  display: block;
+}
+.thumbimg img {
+  transition: opacity 0.25s ease;
+}
+.thumbimg--loading img {
+  opacity: 0;
+}
+.thumbimg--error img {
+  opacity: 0.2;
+}
+.compare--loading img {
+  opacity: 0;
+}
+.compare img {
+  transition: opacity 0.25s ease;
+}
+.compare__loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 4;
+}
+.compare--loading {
+  min-height: 220px;
+}

@@ -9,6 +9,23 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
   const [ratio, setRatio] = useState(width && height ? `${width} / ${height}` : null)
   const dragging = useRef(false)
   const touched = useRef(false)
+  // Clear loading state until both pictures have actually arrived.
+  const [loaded, setLoaded] = useState({})
+  const beforeRef = useRef(null)
+  const afterRef = useRef(null)
+  useEffect(() => {
+    const done = (el) => Boolean(el?.complete && el.naturalWidth)
+    setLoaded({ before: done(beforeRef.current), after: done(afterRef.current) })
+  }, [before, after])
+  const mark = (k) => setLoaded((l) => ({ ...l, [k]: true }))
+  const ready = loaded.before && (!after || loaded.after)
+  const Loading = () =>
+    ready ? null : (
+      <div className="compare__loading" role="status" aria-live="polite">
+        <span className="spinner" aria-hidden="true" />
+        <span className="sr-only">Loading</span>
+      </div>
+    )
 
   // Intro: once the slider scrolls into view, sweep from "as photographed" across to
   // the proposal and settle in the middle — the transformation, shown without a click.
@@ -60,6 +77,7 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
   }, [width, height])
 
   const onLoad = (e) => {
+    mark('before')
     if (!width || !height) setRatio(`${e.currentTarget.naturalWidth} / ${e.currentTarget.naturalHeight}`)
   }
 
@@ -91,8 +109,9 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
 
   if (!after) {
     return (
-      <figure className="compare compare--single" style={ratio ? { aspectRatio: ratio } : undefined}>
-        <img src={before} alt={alt} onLoad={onLoad} draggable="false" />
+      <figure className={`compare compare--single ${ready ? '' : 'compare--loading'}`} style={ratio ? { aspectRatio: ratio } : undefined}>
+        <img ref={beforeRef} src={before} alt={alt} onLoad={onLoad} onError={() => mark('before')} draggable="false" />
+        <Loading />
         {beforeLabel && <figcaption className="compare__tag compare__tag--left">{beforeLabel}</figcaption>}
       </figure>
     )
@@ -100,7 +119,7 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
 
   return (
     <figure
-      className="compare"
+      className={`compare ${ready ? '' : 'compare--loading'}`}
       ref={box}
       style={ratio ? { aspectRatio: ratio, '--pos': `${pos}%` } : { '--pos': `${pos}%` }}
       onPointerDown={(e) => {
@@ -108,10 +127,11 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
         moveTo(e.clientX)
       }}
     >
-      <img className="compare__after" src={after} alt={afterLabel ? `${alt} — ${afterLabel}` : alt} draggable="false" />
+      <img ref={afterRef} className="compare__after" src={after} alt={afterLabel ? `${alt} — ${afterLabel}` : alt} onLoad={() => mark('after')} onError={() => mark('after')} draggable="false" />
       <div className="compare__before">
-        <img src={before} alt={beforeLabel ? `${alt} — ${beforeLabel}` : alt} onLoad={onLoad} draggable="false" />
+        <img ref={beforeRef} src={before} alt={beforeLabel ? `${alt} — ${beforeLabel}` : alt} onLoad={onLoad} onError={() => mark('before')} draggable="false" />
       </div>
+      <Loading />
       <div
         className="compare__handle"
         role="slider"

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addVersion, normalizeProperty, visiblePhotos } from '../../shared/model.js'
 import AddressSearch from '../components/AddressSearch.jsx'
 import Compare from '../components/Compare.jsx'
@@ -32,6 +32,20 @@ async function withRetry(fn, tries = 3) {
       await sleep(3000 * i)
     }
   }
+}
+
+// A rail thumbnail that shimmers until its image has actually arrived.
+function Thumb({ src, width, height }) {
+  const [state, setState] = useState('loading')
+  const ref = useRef(null)
+  useEffect(() => {
+    setState(ref.current?.complete && ref.current.naturalWidth ? 'ready' : 'loading')
+  }, [src])
+  return (
+    <span className={`thumbimg thumbimg--${state}`}>
+      <img ref={ref} src={src} alt="" loading="lazy" width={width || undefined} height={height || undefined} onLoad={() => setState('ready')} onError={() => setState('error')} />
+    </span>
+  )
 }
 
 export default function Studio({ id }) {
@@ -355,104 +369,6 @@ export default function Studio({ id }) {
         </p>
       )}
 
-      {/* ------------------------------------------------ designs */}
-      <section className="designs" aria-labelledby="designs-h">
-        <div className="designs__head">
-          <h2 id="designs-h">{t('design.title')}</h2>
-          <p className="fine">{t('design.lede')}</p>
-        </div>
-        {designs.length > 0 && (
-          <ul className="designs__list">
-            {designs.map((d, i) => {
-              const cover = visible.map((p) => sideImage(property, d.id, p)).find(Boolean)
-              const have = visible.filter((p) => d.picks[p.id]).length
-              const isRunning = run?.status === 'running' && run.designId === d.id
-              return (
-                <li key={d.id}>
-                  <button type="button" className="dchip" aria-pressed={sides.right === d.id} onClick={() => setSides((s) => ({ left: s.left === d.id ? 'original' : s.left, right: d.id }))} disabled={!have}>
-                    <span className="dchip__img">{cover ? <img src={cover.src} alt="" loading="lazy" /> : <span className="spinner spinner--small" aria-hidden="true" />}</span>
-                    <span className="dchip__txt">
-                      <span className="dchip__n">
-                        {t('design.n', { n: i + 1 })}
-                        {property.featured === d.id && <span className="dchip__star" title={t('design.featured')}>★</span>}
-                      </span>
-                      <span className="dchip__name">{designName(d, t)}</span>
-                      <span className="dchip__meta">{isRunning ? t('design.running') : d.scope && have <= d.scope.length && have < visible.length ? t(have === 1 ? 'design.scoped1' : 'design.scoped', { n: have }) : have < visible.length ? t('design.partial', { have, total: visible.length }) : t(have === 1 ? 'design.scoped1' : 'design.photos', { n: have })}</span>
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-        {right && (
-          <div className="designs__actions">
-            {property.featured === right.id ? (
-              <span className="tag">★ {t('design.featured')}</span>
-            ) : (
-              <button type="button" className="btn btn--quiet btn--small" onClick={() => op({ op: 'design.feature', designId: right.id }, 'design_feature')}>
-                {t('design.feature')}
-              </button>
-            )}
-            {missing.length > 0 && !(run?.status === 'running') && (
-              <button type="button" className="btn btn--quiet btn--small" onClick={() => finishDesign(right)} disabled={!canRender}>
-                {right.scope ? t('design.extend', { n: missing.length }) : t('design.finish', { n: missing.length })}
-              </button>
-            )}
-            <button type="button" className="btn btn--quiet btn--small btn--danger" onClick={() => deleteDesign(right)} disabled={run?.status === 'running'}>
-              {t('design.delete')}
-            </button>
-          </div>
-        )}
-
-        <div className="newdesign">
-          <h3>{designs.length ? t('design.new') : t('design.first')}</h3>
-          <div className="seg seg--wide" role="group" aria-label={t('studio.mode.label')}>
-            <button type="button" aria-pressed={mode === 'redesign'} onClick={() => setMode('redesign')}>
-              {t('studio.mode.redesign')}
-            </button>
-            <button type="button" aria-pressed={mode === 'cleanup'} onClick={() => setMode('cleanup')}>
-              {t('studio.mode.cleanup')}
-            </button>
-            <button type="button" aria-pressed={mode === 'polish'} onClick={() => setMode('polish')}>
-              {t('studio.mode.polish')}
-            </button>
-          </div>
-          {mode === 'redesign' && (
-            <fieldset className="choices">
-              <legend>{t('studio.style')}</legend>
-              {STYLES.map((s) => (
-                <label key={s} className="choice">
-                  <input type="radio" name="style" value={s} checked={style === s} onChange={() => setStyle(s)} />
-                  <span>{t(`style.${s}`)}</span>
-                </label>
-              ))}
-            </fieldset>
-          )}
-          <fieldset className="choices choices--light">
-            <legend>{t('studio.light')}</legend>
-            {LIGHTS.map((l) => (
-              <label key={l} className={`choice choice--${l}`}>
-                <input type="radio" name="light" value={l} checked={light === l} onChange={() => setLight(l)} />
-                <span>{t(`light.${l}`)}</span>
-              </label>
-            ))}
-          </fieldset>
-          {mode === 'redesign' && (
-            <label className="field field--note">
-              <span>{t('design.note')}</span>
-              <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('design.notePh')} maxLength={300} />
-            </label>
-          )}
-          <div className="newdesign__go">
-            <button type="button" className="btn btn--glow btn--big" onClick={restyleHouse} disabled={!canRender || starting || !visible.length || run?.status === 'running'}>
-              {starting ? t('design.starting') : mode === 'polish' ? t('studio.renderPolish', { n: visible.length }) : mode === 'cleanup' ? t('studio.renderPro', { n: visible.length }) : t('studio.render', { n: visible.length })}
-            </button>
-            <p className="fine">{t('studio.renderNote', { min: Math.max(1, Math.round((Math.ceil(visible.length / 3) * 30) / 60)) })}</p>
-          </div>
-        </div>
-      </section>
-
       {/* ------------------------------------------------ photos */}
       <div className="workspace">
         <section className="viewer" aria-label={t('studio.photos')}>
@@ -569,9 +485,18 @@ export default function Studio({ id }) {
               )}
             </>
           ) : (
-            <div className="viewer__empty">
-              <p>{listing === 'looking' ? t('studio.listing.looking') : t('studio.empty')}</p>
-            </div>
+            listing === 'looking' || status === 'loading' ? (
+              <div className="viewer__empty viewer__empty--loading" role="status" aria-live="polite">
+                <span className="skeleton skeleton--frame" aria-hidden="true" />
+                <p>
+                  <span className="spinner spinner--small" aria-hidden="true" /> {t('studio.listing.looking')}
+                </p>
+              </div>
+            ) : (
+              <div className="viewer__empty">
+                <p>{t('studio.empty')}</p>
+              </div>
+            )
           )}
         </section>
 
@@ -609,16 +534,120 @@ export default function Studio({ id }) {
               return (
                 <li key={p.id} className={p.hidden ? 'is-hidden' : ''}>
                   <button type="button" aria-pressed={p.id === selected} onClick={() => setSelected(p.id)} aria-label={`${t('studio.photo')} ${photos.indexOf(p) + 1}${p.hidden ? ` (${t('studio.hidden')})` : ''}`}>
-                    <img src={img.src} alt="" loading="lazy" width={p.width || undefined} height={p.height || undefined} />
+                    <Thumb src={img.src} width={p.width} height={p.height} />
                     {busy[p.id] && <span className="thumbs__busy spinner spinner--small" aria-hidden="true" />}
                     {right?.picks[p.id] && <span className="thumbs__done" aria-hidden="true" />}
                   </button>
                 </li>
               )
             })}
+            {listing === 'looking' &&
+              Array.from({ length: photos.length ? 3 : 6 }, (_, i) => (
+                <li key={`sk${i}`} aria-hidden="true">
+                  <span className="skeleton skeleton--thumb" />
+                </li>
+              ))}
           </ul>
         </aside>
       </div>
+
+      {/* ------------------------------------------------ designs */}
+      <section className="designs" aria-labelledby="designs-h">
+        <div className="designs__head">
+          <h2 id="designs-h">{t('design.title')}</h2>
+          <p className="fine">{t('design.lede')}</p>
+        </div>
+        {designs.length > 0 && (
+          <ul className="designs__list">
+            {designs.map((d, i) => {
+              const cover = visible.map((p) => sideImage(property, d.id, p)).find(Boolean)
+              const have = visible.filter((p) => d.picks[p.id]).length
+              const isRunning = run?.status === 'running' && run.designId === d.id
+              return (
+                <li key={d.id}>
+                  <button type="button" className="dchip" aria-pressed={sides.right === d.id} onClick={() => setSides((s) => ({ left: s.left === d.id ? 'original' : s.left, right: d.id }))} disabled={!have}>
+                    <span className="dchip__img">{cover ? <img src={cover.src} alt="" loading="lazy" /> : <span className="spinner spinner--small" aria-hidden="true" />}</span>
+                    <span className="dchip__txt">
+                      <span className="dchip__n">
+                        {t('design.n', { n: i + 1 })}
+                        {property.featured === d.id && <span className="dchip__star" title={t('design.featured')}>★</span>}
+                      </span>
+                      <span className="dchip__name">{designName(d, t)}</span>
+                      <span className="dchip__meta">{isRunning ? t('design.running') : d.scope && have <= d.scope.length && have < visible.length ? t(have === 1 ? 'design.scoped1' : 'design.scoped', { n: have }) : have < visible.length ? t('design.partial', { have, total: visible.length }) : t(have === 1 ? 'design.scoped1' : 'design.photos', { n: have })}</span>
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {right && (
+          <div className="designs__actions">
+            {property.featured === right.id ? (
+              <span className="tag">★ {t('design.featured')}</span>
+            ) : (
+              <button type="button" className="btn btn--quiet btn--small" onClick={() => op({ op: 'design.feature', designId: right.id }, 'design_feature')}>
+                {t('design.feature')}
+              </button>
+            )}
+            {missing.length > 0 && !(run?.status === 'running') && (
+              <button type="button" className="btn btn--quiet btn--small" onClick={() => finishDesign(right)} disabled={!canRender}>
+                {right.scope ? t('design.extend', { n: missing.length }) : t('design.finish', { n: missing.length })}
+              </button>
+            )}
+            <button type="button" className="btn btn--quiet btn--small btn--danger" onClick={() => deleteDesign(right)} disabled={run?.status === 'running'}>
+              {t('design.delete')}
+            </button>
+          </div>
+        )}
+
+        <div className="newdesign">
+          <h3>{designs.length ? t('design.new') : t('design.first')}</h3>
+          <div className="seg seg--wide" role="group" aria-label={t('studio.mode.label')}>
+            <button type="button" aria-pressed={mode === 'redesign'} onClick={() => setMode('redesign')}>
+              {t('studio.mode.redesign')}
+            </button>
+            <button type="button" aria-pressed={mode === 'cleanup'} onClick={() => setMode('cleanup')}>
+              {t('studio.mode.cleanup')}
+            </button>
+            <button type="button" aria-pressed={mode === 'polish'} onClick={() => setMode('polish')}>
+              {t('studio.mode.polish')}
+            </button>
+          </div>
+          {mode === 'redesign' && (
+            <fieldset className="choices">
+              <legend>{t('studio.style')}</legend>
+              {STYLES.map((s) => (
+                <label key={s} className="choice">
+                  <input type="radio" name="style" value={s} checked={style === s} onChange={() => setStyle(s)} />
+                  <span>{t(`style.${s}`)}</span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <fieldset className="choices choices--light">
+            <legend>{t('studio.light')}</legend>
+            {LIGHTS.map((l) => (
+              <label key={l} className={`choice choice--${l}`}>
+                <input type="radio" name="light" value={l} checked={light === l} onChange={() => setLight(l)} />
+                <span>{t(`light.${l}`)}</span>
+              </label>
+            ))}
+          </fieldset>
+          {mode === 'redesign' && (
+            <label className="field field--note">
+              <span>{t('design.note')}</span>
+              <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('design.notePh')} maxLength={300} />
+            </label>
+          )}
+          <div className="newdesign__go">
+            <button type="button" className="btn btn--glow btn--big" onClick={restyleHouse} disabled={!canRender || starting || !visible.length || run?.status === 'running'}>
+              {starting ? t('design.starting') : mode === 'polish' ? t('studio.renderPolish', { n: visible.length }) : mode === 'cleanup' ? t('studio.renderPro', { n: visible.length }) : t('studio.render', { n: visible.length })}
+            </button>
+            <p className="fine">{t('studio.renderNote', { min: Math.max(1, Math.round((Math.ceil(visible.length / 3) * 30) / 60)) })}</p>
+          </div>
+        </div>
+      </section>
 
       {property.address ? (
         <PropertyMap address={property.address} parcel={property.parcel} pois={property.pois} lotSqft={lotSqft(property.facts)} />
