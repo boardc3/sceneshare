@@ -20,9 +20,11 @@ import { useBilling } from '../lib/billing.js'
 import { useHouseRun } from '../lib/houseRun.js'
 import { Link, useRouter } from '../router.jsx'
 
+const SOURCE_NAMES = { zillow: 'Zillow', redfin: 'Redfin', homes: 'Homes.com' }
+
 export const STYLES = ['signature', 'coastal-modern', 'pure-form', 'resort-living', 'timeless-estate', 'urban-penthouse', 'executive-modern', 'avant-garde']
 export const LIGHTS = ['daylight', 'golden', 'twilight', 'original']
-const ORDER = { zillow: 0, redfin: 0, owner: 1, streetview: 2, google: 3 }
+const ORDER = { zillow: 0, redfin: 0, homes: 0, owner: 1, streetview: 2, google: 3 }
 
 // One request with patient retries (for single-photo actions).
 async function withRetry(fn, tries = 3) {
@@ -76,6 +78,8 @@ export default function Studio({ id }) {
   const [shared, setShared] = useState(0)
   const [prPhotos, setPrPhotos] = useState(null) // the clean-up / restyle pop-up, for these photos
   const [prBusy, setPrBusy] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkMsg, setLinkMsg] = useState(null) // { busy } | { ok, text }
   const [reviewing, setReviewing] = useState(null) // { designId, startAt } while the review pass is open
 
   useEffect(() => {
@@ -128,7 +132,7 @@ export default function Studio({ id }) {
       .then((d) => {
         if (d.property) setProperty(normalizeProperty(d.property))
         else setProperty((p) => ({ ...p, listingChecked: true }))
-        const n = d.property?.photos?.filter((p) => p.source === 'zillow' || p.source === 'redfin').length || 0
+        const n = d.property?.photos?.filter((p) => ['zillow', 'redfin', 'homes'].includes(p.source)).length || 0
         setListing(d.found ? 'found' : d.reason === 'scraper_not_configured' ? 'off' : 'none')
         track('listing_lookup', { found: d.found, used: d.listing?.used || null, photos: n }, { propertyId: id })
       })
@@ -329,6 +333,29 @@ export default function Studio({ id }) {
     }
   }
 
+  // A pasted Zillow / Redfin / Homes.com link: import exactly that listing's photos.
+  const importLink = async (e) => {
+    e.preventDefault()
+    const url = linkUrl.trim()
+    if (!url) return
+    setLinkMsg({ busy: true })
+    setError('')
+    try {
+      const d = await post('/api/listing', { propertyId: id, url, lang })
+      if (d.property) setProperty(normalizeProperty(d.property))
+      const n = d.property?.photos?.filter((p) => ['zillow', 'redfin', 'homes'].includes(p.source)).length || 0
+      setLinkMsg(d.found ? { ok: true, text: t('link.done', { n, src: SOURCE_NAMES[d.listing?.used] || '' }) } : { ok: false, text: t('link.none') })
+      if (d.found) {
+        setLinkUrl('')
+        setListing('found')
+      }
+      track('listing_link', { found: d.found, source: d.listing?.used || d.link || null, photos: n }, { propertyId: id })
+    } catch (err) {
+      setLinkMsg({ ok: false, text: err.message || t('err.generic') })
+      track('listing_link_failed', { code: err.code }, { propertyId: id })
+    }
+  }
+
   const locate = async ({ address, placeId, unit }) => {
     setLocating(true)
     setError('')
@@ -382,7 +409,7 @@ export default function Studio({ id }) {
 
   const listingMsg = {
     looking: t('studio.listing.looking'),
-    found: t('studio.listing.found', { n: photos.filter((p) => p.source === 'zillow' || p.source === 'redfin').length, src: property.listing?.used === 'redfin' ? 'Redfin' : 'Zillow' }),
+    found: t('studio.listing.found', { n: photos.filter((p) => ['zillow', 'redfin', 'homes'].includes(p.source)).length, src: SOURCE_NAMES[property.listing?.used] || 'Zillow' }),
     none: t('studio.listing.none'),
     off: t('studio.listing.off'),
     error: t('studio.listing.error'),
@@ -591,6 +618,22 @@ export default function Studio({ id }) {
             <p className="rail__status" role="status">
               <span className="spinner spinner--small" aria-hidden="true" /> {t('studio.uploading')}
             </p>
+          )}
+          {property.address && listing !== 'looking' && (
+            <form className="linkimport" onSubmit={importLink}>
+              <label htmlFor="linkimport">{t('link.label')}</label>
+              <div className="linkimport__row">
+                <input id="linkimport" type="url" inputMode="url" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder={t('link.ph')} disabled={linkMsg?.busy} />
+                <button type="submit" className="btn btn--quiet btn--small" disabled={!linkUrl.trim() || linkMsg?.busy}>
+                  {linkMsg?.busy ? <span className="spinner spinner--small" aria-hidden="true" /> : null} {linkMsg?.busy ? t('link.busy') : t('link.go')}
+                </button>
+              </div>
+              {linkMsg?.text && (
+                <p className={`linkimport__msg ${linkMsg.ok ? '' : 'is-bad'}`} role="status">
+                  {linkMsg.text}
+                </p>
+              )}
+            </form>
           )}
           <ul className="thumbs">
             {photos.map((p) => {

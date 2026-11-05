@@ -127,8 +127,14 @@ const en = {
   'auth.close': 'Close',
 
   'studio.loading': 'Finding the home…',
-  'studio.listing.looking': 'Looking for listing photos on Zillow and Redfin. This can take up to a minute.',
+  'studio.listing.looking': 'Looking for listing photos on Zillow, Redfin and Homes.com. This can take up to a minute.',
   'studio.listing.found': '{n} listing photos from {src}.',
+  'link.label': 'Have the listing page? Paste a Zillow, Redfin or Homes.com link',
+  'link.ph': 'https://www.homes.com/property/…',
+  'link.go': 'Import photos',
+  'link.busy': 'Importing…',
+  'link.done': 'Imported {n} photos from {src}.',
+  'link.none': 'No photos of this home found on that page.',
   'studio.listing.none': 'No listing photos found for this address. Add your own photos to get started.',
   'studio.listing.off': 'Listing photo search is not set up yet.',
   'studio.photos': 'Photos',
@@ -939,8 +945,14 @@ const zh = {
   'auth.close': '关闭',
 
   'studio.loading': '正在查找房屋…',
-  'studio.listing.looking': '正在 Zillow 和 Redfin 上查找房源照片，最多需要一分钟。',
+  'studio.listing.looking': '正在 Zillow、Redfin 和 Homes.com 上查找房源照片，最多需要一分钟。',
   'studio.listing.found': '已从 {src} 获取 {n} 张房源照片。',
+  'link.label': '已有房源页面？粘贴 Zillow、Redfin 或 Homes.com 链接',
+  'link.ph': 'https://www.homes.com/property/…',
+  'link.go': '导入照片',
+  'link.busy': '正在导入…',
+  'link.done': '已从 {src} 导入 {n} 张照片。',
+  'link.none': '该页面上没有找到这处房屋的照片。',
   'studio.listing.none': '未找到该地址的房源照片。请添加您自己的照片开始。',
   'studio.listing.off': '房源照片搜索尚未配置。',
   'studio.photos': '照片',
@@ -1644,6 +1656,7 @@ export function creditText(photo, t) {
   if (photo.source === 'owner') return t('credit.owner')
   if (photo.source === 'zillow') return t('credit.listing', { src: 'Zillow' })
   if (photo.source === 'redfin') return t('credit.listing', { src: 'Redfin' })
+  if (photo.source === 'homes') return t('credit.listing', { src: 'Homes.com' })
   if (photo.source === 'google') return photo.credit ? photo.credit.replace(/^Google Maps/, t('credit.google')) : t('credit.google')
   return photo.credit || ''
 }

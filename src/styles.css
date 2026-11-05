@@ -4630,3 +4630,33 @@ body.is-modal {
     flex: 1;
   }
 }
+
+/* ---------- paste a listing link (studio rail) ---------- */
+.linkimport {
+  margin: 10px 0 12px;
+  font-size: 0.85rem;
+}
+.linkimport label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+.linkimport__row {
+  display: flex;
+  gap: 6px;
+}
+.linkimport input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.linkimport__msg {
+  margin-top: 6px;
+}
+.linkimport__msg.is-bad {
+  color: var(--error);
+}

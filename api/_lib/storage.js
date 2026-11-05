@@ -12,6 +12,7 @@ const BROWSER_UA =
 const ALLOWED_HOSTS = [
   /(^|\.)zillowstatic\.com$/,
   /(^|\.)cdn-redfin\.com$/,
+  /^images\.homes\.com$/,
   /(^|\.)public\.blob\.vercel-storage\.com$/,
 ]
 
@@ -55,6 +56,11 @@ export async function downloadImage(url, { referer } = {}) {
   if (config.scraperKey) {
     const r = await scraperFetch(url, { binary: true, timeoutMs: 45000 })
     if (r.ok && looksLikeImage(r.buffer, r.contentType)) return r.buffer
+    // Akamai-fronted CDNs (Homes.com) refuse ScraperAPI's plain pool; premium gets through.
+    if (/homes\.com$/.test(new URL(url).hostname)) {
+      const p = await scraperFetch(url, { binary: true, premium: true, timeoutMs: 45000 })
+      if (p.ok && looksLikeImage(p.buffer, p.contentType)) return p.buffer
+    }
   }
   throw new Error(`download failed: ${url}`)
 }

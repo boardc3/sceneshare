@@ -17,7 +17,9 @@ export default function Facts({ facts, listing }) {
     ['facts.built', facts.yearBuilt ? String(facts.yearBuilt) : null],
   ].filter(([, v]) => v)
   if (!rows.length) return null
-  const src = listing?.zillow ? 'Zillow' : null
+  const from = listing?.factsFrom === 'homes' ? 'homes' : listing?.zillow ? 'zillow' : null
+  const src = from === 'homes' ? 'Homes.com' : from ? 'Zillow' : null
+  const href = from ? listing[from] : null
   return (
     <div className="facts">
       <dl>
@@ -28,9 +30,9 @@ export default function Facts({ facts, listing }) {
           </div>
         ))}
       </dl>
-      {src && (
+      {src && href && (
         <p className="facts__src">
-          <a href={listing.zillow} target="_blank" rel="noreferrer">
+          <a href={href} target="_blank" rel="noreferrer">
             {t('facts.source', { src })}
           </a>
         </p>

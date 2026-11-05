@@ -71,13 +71,17 @@ export default function PropertyDetails({ property }) {
                   {more ? t('details.less') : t('details.more')}
                 </button>
               )}
-              {property.listing?.zillow && (
-                <p className="fine">
-                  <a href={property.listing.zillow} target="_blank" rel="noreferrer">
-                    {t('facts.source', { src: 'Zillow' })}
-                  </a>
-                </p>
-              )}
+              {(() => {
+                const l = property.listing || {}
+                const from = l.factsFrom === 'homes' && l.homes ? 'homes' : l.zillow ? 'zillow' : null
+                return from ? (
+                  <p className="fine">
+                    <a href={l[from]} target="_blank" rel="noreferrer">
+                      {t('facts.source', { src: from === 'homes' ? 'Homes.com' : 'Zillow' })}
+                    </a>
+                  </p>
+                ) : null
+              })()}
             </div>
           )}
           {glance.length > 0 && (
