@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import AddressSearch from '../components/AddressSearch.jsx'
 import Compare from '../components/Compare.jsx'
 import HeroMap from '../components/HeroMap.jsx'
+import Story from '../components/Story.jsx'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { post, rememberProperty } from '../lib/api.js'
@@ -78,6 +79,8 @@ export default function Landing() {
         </div>
         <p className="hero__caption">{t('hero.mapcaption')}</p>
       </section>
+
+      <Story />
 
       <section className="demo" aria-labelledby="demo-h">
         <div className="demo__text">

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Builds the homepage link previews from the landing demo pair:
+"""(Superseded 2026-11-04: share-home.gif and og-home.jpg are now cut from the
+homepage film, public/media/story.mp4 — see the README.)
+Builds the homepage link previews from the landing demo pair:
   public/media/share-home.gif  animated wipe, as photographed -> proposed (og:image)
   public/media/og-home.jpg     a still split frame (fallback)
 Run after replacing public/media/demo-before.jpg / demo-after.jpg:
