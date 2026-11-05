@@ -36,25 +36,34 @@ export async function unitsAt({ streetNumber, route, city, state, zip }) {
   const base = `${streetNumber} ${shortRoute(route)}`.trim()
   const tail = `, ${city || ''}, ${state || ''} ${zip || ''}`.replace(/\s+/g, ' ').trim()
   const street = streetName(route)
-  const queries = [`${base}${tail}`, ...['1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'PH'].map((p) => `${base} #${p}${tail}`)]
-  const lists = await Promise.all(
-    queries.map(async (text) => {
-      try {
-        const q = new URLSearchParams({ q: text, resultTypes: 'allAddress', resultCount: '12' })
-        const r = await fetchWithTimeout(`https://www.zillowstatic.com/autocomplete/v3/suggestions?${q}`, { headers: { 'User-Agent': UA } }, 8000)
-        if (!r.ok) return []
-        return ((await r.json()).results || []).map((x) => x.display || '')
-      } catch {
-        return []
-      }
-    }),
-  )
-  const out = new Set()
-  for (const display of lists.flat()) {
-    if (!sameStreetNumber(display, streetNumber) || (street && !display.toLowerCase().includes(street)) || (zip && !display.includes(zip))) continue
-    const m = /(?:#|\b(?:apt|unit|ste|suite)\.?\s*#?)\s*([A-Za-z0-9-]{1,8})\b/i.exec(display)
-    if (m) out.add(m[1].toUpperCase())
+  const ask = async (text) => {
+    try {
+      const q = new URLSearchParams({ q: text, resultTypes: 'allAddress', resultCount: '12' })
+      const r = await fetchWithTimeout(`https://www.zillowstatic.com/autocomplete/v3/suggestions?${q}`, { headers: { 'User-Agent': UA } }, 8000)
+      if (!r.ok) return []
+      return ((await r.json()).results || []).map((x) => x.display || '')
+    } catch {
+      return []
+    }
   }
+  const out = new Set()
+  let complex = false
+  const read = (displays) => {
+    for (const display of displays) {
+      if ((street && !display.toLowerCase().includes(street)) || (zip && !display.includes(zip))) continue
+      const m = /(?:#|\b(?:apt|unit|ste|suite)\.?\s*#?)\s*([A-Za-z0-9-]{1,12})\b/i.exec(display)
+      if (!m) continue
+      const u = m[1].toUpperCase()
+      // A complex filed under one address: "1 Park Newport Dr #4000-204" is unit 204 of building 4000.
+      const inBuilding = u.startsWith(`${String(streetNumber).toUpperCase()}-`)
+      if (inBuilding) {
+        complex = true
+        out.add(u.slice(String(streetNumber).length + 1))
+      } else if (sameStreetNumber(display, streetNumber) && u.length <= 8) out.add(u)
+    }
+  }
+  read((await Promise.all([`${base}${tail}`, ...['1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'PH'].map((p) => `${base} #${p}${tail}`)].map(ask))).flat())
+  if (complex) read((await Promise.all(['1', '2', '3', '4', '5', '6'].map((p) => ask(`${base} #${streetNumber}-${p}${tail}`)))).flat())
   return [...out]
 }
 
