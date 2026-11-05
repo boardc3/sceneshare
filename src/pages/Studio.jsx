@@ -365,7 +365,7 @@ export default function Studio({ id }) {
           </button>
         </p>
       )}
-      {property.address && <ShareStats id={id} refreshKey={shared} />}
+      {property.address && <ShareStats id={id} refreshKey={shared} photos={photos} />}
 
       {property.facts && <Facts facts={property.facts} listing={property.listing} />}
 

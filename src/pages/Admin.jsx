@@ -105,6 +105,8 @@ export default function Admin() {
         ))}
       </ul>
 
+      {o.engagement && <EngagementPanel e={o.engagement} />}
+
       <section>
         <h2>Privacy requests</h2>
         <Table rows={o.privacy} cols={[['When', (r) => when(r.at)], ['Kind', (r) => r.kind], ['Email', (r) => r.email], ['Status', (r) => r.status], ['Details', (r) => r.details || '']]} empty="No requests." />
@@ -181,5 +183,54 @@ export default function Admin() {
         </section>
       </div>
     </main>
+  )
+}
+
+const secs = (ms) => {
+  const s = Math.round((ms || 0) / 1000)
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
+}
+
+// Session length and where visitors spend their time, from lib/engagement.js.
+function EngagementPanel({ e }) {
+  const byPage = {}
+  for (const r of e.sections) (byPage[r.page] ||= []).push(r)
+  return (
+    <section>
+      <h2>Time on site ({e.days} days)</h2>
+      <ul className="stats">
+        {[
+          ['Sessions', e.sessions],
+          ['Avg engaged time', secs(e.avgEngagedMs)],
+          ['Median engaged time', secs(e.medianEngagedMs)],
+          ['Avg session length (first → last event)', secs(e.avgSpanMs)],
+          ['Pages per session', e.avgPages],
+          ['Sessions over 1 min', e.overMinute],
+        ].map(([k, v]) => (
+          <li key={k}>
+            <span className="stats__v">{typeof v === 'number' ? v.toLocaleString('en-US') : v}</span>
+            <span className="stats__k">{k}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="fine">Engaged time counts only while the tab is visible and the visitor has moved, scrolled or tapped in the last minute.</p>
+      <div className="admin__cols">
+        <section>
+          <h3>Time by page type</h3>
+          <Table rows={e.pages} cols={[['Page', (r) => r.page], ['Sessions', (r) => r.sessions], ['Total', (r) => secs(r.ms)], ['Avg per session', (r) => secs(r.avgMs)]]} empty="No engagement yet." />
+        </section>
+        <section>
+          <h3>Where the time goes</h3>
+          <Table
+            rows={Object.entries(byPage).flatMap(([page, rows]) => {
+              const total = rows.reduce((a, r) => a + r.ms, 0) || 1
+              return rows.slice(0, 6).map((r) => ({ ...r, share: Math.round((r.ms / total) * 100) }))
+            })}
+            cols={[['Page', (r) => r.page], ['Section', (r) => r.section], ['Share of page time', (r) => `${r.share}%`], ['Total', (r) => secs(r.ms)], ['Sessions', (r) => r.sessions]]}
+            empty="No section data yet."
+          />
+        </section>
+      </div>
+    </section>
   )
 }

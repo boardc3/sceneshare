@@ -8,6 +8,7 @@ import ShareBar from '../components/ShareBar.jsx'
 import SidePicker from '../components/SidePicker.jsx'
 import { creditText, useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
+import { focusSection } from '../lib/engagement.js'
 import { get, post } from '../lib/api.js'
 import { ensureTerms, useAuth } from '../lib/auth.js'
 import { isEmail } from '../lib/format.js'
@@ -96,7 +97,7 @@ export default function Share({ id }) {
           </button>
         </p>
       )}
-      <header className="share__head">
+      <header className="share__head" data-section="overview">
         <p className="share__eyebrow">{t('share.eyebrow')}</p>
         <h1>{a ? `${a.streetNumber} ${a.route}${a.unit ? ` #${a.unit}` : ''}` : 'Sceneshare'}</h1>
         {a && (
@@ -111,7 +112,7 @@ export default function Share({ id }) {
       {property.facts && <Facts facts={property.facts} listing={property.listing} />}
 
       {designs.length > 0 && (
-        <section className="share__designs" aria-labelledby="sd-h">
+        <section className="share__designs" aria-labelledby="sd-h" data-section="designs">
           <h2 id="sd-h">{t('share.designs')}</h2>
           <ul className="designs__list">
             {designs.map((d, i) => {
@@ -133,7 +134,7 @@ export default function Share({ id }) {
         </section>
       )}
 
-      <section className="rooms" aria-label={t('share.rooms')}>
+      <section className="rooms" aria-label={t('share.rooms')} data-section="photos">
         <ul className="roomgrid">
           {property.photos.map((p, i) => {
             const L = sideImage(property, sides.left, p)
@@ -167,7 +168,7 @@ export default function Share({ id }) {
       <PropertyDetails property={property} />
       {a && <PropertyMap address={a} parcel={property.parcel} pois={property.pois || []} lotSqft={lotSqft(property.facts)} />}
 
-      <section className="share__end">
+      <section className="share__end" data-section="contact">
         <h2>{t('share.sendTitle')}</h2>
         <ShareBar id={id} address={a?.formatted || ''} />
         <p className="share__cta">
@@ -245,6 +246,11 @@ function RoomViewer({ property, sides, index, onIndex, onClose, alt }) {
     window.addEventListener('keydown', on)
     return () => window.removeEventListener('keydown', on)
   }, [index, n, onIndex])
+  // Time in the viewer is credited to this photo (lib/engagement.js).
+  useEffect(() => {
+    focusSection('room_viewer', p?.id || String(index))
+  }, [index, p?.id])
+  useEffect(() => () => focusSection(null), [])
   if (!p) return null
   const L = sideImage(property, sides.left, p)
   const R = sides.right ? sideImage(property, sides.right, p) : null

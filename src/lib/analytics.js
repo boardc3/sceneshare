@@ -6,6 +6,7 @@
 // a decline. Declined visitors send no analytics at all — only error reports,
 // which carry no identifiers.
 import { inject } from '@vercel/analytics'
+import { startPage } from './engagement.js'
 
 const CONSENT_KEY = 'ss:consent' // 'all' | 'essential'
 const VID_KEY = 'ss:vid'
@@ -127,7 +128,11 @@ export function track(name, props = null, { propertyId = null } = {}) {
 export function pageView(path) {
   const m = /^\/(p|studio)\/([a-z0-9]{6,20})/.exec(path)
   track('page_view', { title: document.title.slice(0, 120) }, { propertyId: m ? m[2] : null })
+  startPage(path, m ? m[2] : null)
 }
+
+// Send whatever is queued now (used by lib/engagement.js when the tab is hidden).
+export const flushEvents = (beacon = false) => flush(beacon)
 
 // Errors always go out (no visitor id, no session id): they are how we fix things.
 let errorsSent = 0

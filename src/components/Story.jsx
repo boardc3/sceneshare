@@ -145,7 +145,7 @@ export default function Story() {
   const showFilm = stage === 'anywhere' || stage === 'potential'
 
   return (
-    <section className="story" aria-labelledby="story-h" ref={box}>
+    <section className="story" aria-labelledby="story-h" ref={box} data-section="story">
       <div className="story__text">
         <p className="story__eyebrow">{t('story.eyebrow')}</p>
         <h2 id="story-h">{t('story.title')}</h2>

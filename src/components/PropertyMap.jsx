@@ -207,7 +207,7 @@ export default function PropertyMap({ address, parcel, pois = [], lotSqft = null
   const diff = parcel?.areaSqft && lotSqft ? Math.abs(parcel.areaSqft - lotSqft) / lotSqft : null
 
   return (
-    <section className="location" aria-labelledby="loc-h">
+    <section className="location" aria-labelledby="loc-h" data-section="map">
       <div className="location__head">
         <h2 id="loc-h">{t('map.title')}</h2>
         <div className="location__controls" role="group" aria-label={t('map.title')}>

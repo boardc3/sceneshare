@@ -25,6 +25,27 @@ function cleanProps(p) {
   return s.length > 4000 ? { truncated: s.slice(0, 4000) } : p
 }
 
+// Engagement beats feed numeric casts in the insight queries, so only whole,
+// bounded milliseconds and short keys get through.
+const KEY = /^[a-zA-Z0-9_-]{1,48}$/
+const ms = (v) => Math.max(0, Math.min(6e5, Math.round(Number(v) || 0)))
+function msMap(m, max) {
+  const out = {}
+  for (const [k, v] of Object.entries(m && typeof m === 'object' ? m : {}).slice(0, max)) if (KEY.test(k) && ms(v) > 0) out[k] = ms(v)
+  return out
+}
+function engagementProps(p = {}) {
+  return {
+    kind: KEY.test(p.kind || '') ? p.kind : 'other',
+    activeMs: ms(p.activeMs),
+    spanMs: ms(p.spanMs),
+    sections: msMap(p.sections, 20),
+    rooms: msMap(p.rooms, 60),
+    top: KEY.test(p.top || '') ? p.top : null,
+    seq: Math.max(0, Math.min(1e4, Math.round(Number(p.seq) || 0))),
+  }
+}
+
 export default route(
   ['POST'],
   async (req, res) => {
@@ -59,7 +80,7 @@ export default route(
         userId: user?.id || null,
         lang: body.lang === 'zh' ? 'zh' : body.lang === 'en' ? 'en' : null,
         referrer: clip(e.referrer, 300),
-        props: cleanProps(e.props),
+        props: e.name === 'engagement' ? engagementProps(e.props) : cleanProps(e.props),
       }))
     await insertEvents(rows)
     res._meta = { n: rows.length }

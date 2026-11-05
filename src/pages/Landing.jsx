@@ -62,7 +62,7 @@ export default function Landing() {
 
   return (
     <main id="main">
-      <section className="hero">
+      <section className="hero" data-section="hero">
         <HeroMap target={target} />
         <div className="hero__scrim" aria-hidden="true" />
         <div className="hero__inner">
@@ -83,7 +83,7 @@ export default function Landing() {
 
       <Story />
 
-      <section className="demo" aria-labelledby="demo-h">
+      <section className="demo" aria-labelledby="demo-h" data-section="demo">
         <div className="demo__text">
           <h2 id="demo-h">{t('demo.title')}</h2>
           <p>{t('demo.body')}</p>
@@ -108,7 +108,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="how" aria-labelledby="how-h">
+      <section className="how" aria-labelledby="how-h" data-section="how">
         <h2 id="how-h">{t('how.title')}</h2>
         <ol className="how__steps">
           {[1, 2, 3].map((n) => (
@@ -123,7 +123,7 @@ export default function Landing() {
         </ol>
       </section>
 
-      <section className="pair" aria-label={t('lang.title')}>
+      <section className="pair" aria-label={t('lang.title')} data-section="languages">
         <div className="pair__block">
           <h2>{t('lang.title')}</h2>
           <p>{t('lang.body')}</p>

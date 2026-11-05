@@ -1,7 +1,7 @@
 import { sessionUser } from '../_lib/auth.js'
 import { assertCanEmail } from '../_lib/billing.js'
 import { config, TERMS_VERSION } from '../_lib/config.js'
-import { createShare, listShares, logSubmission, markShareSent, ownerAccepted, propertyRow } from '../_lib/db.js'
+import { createShare, listShares, propertyEngagement, logSubmission, markShareSent, ownerAccepted, propertyRow } from '../_lib/db.js'
 import { newId, requireOwner, validId } from '../_lib/gate.js'
 import { ApiError, isEmail, query, readJson, route, send } from '../_lib/http.js'
 import { visitorId } from '../_lib/log.js'
@@ -19,8 +19,9 @@ export default route(
   async (req, res) => {
     if (req.method === 'GET') {
       const { propertyId } = query(req)
-      await requireOwner(req, res, propertyId)
-      return send(res, 200, { ok: true, ...(await listShares(propertyId)) })
+      const { user } = await requireOwner(req, res, propertyId)
+      const [list, engagement] = await Promise.all([listShares(propertyId), propertyEngagement(propertyId, user.id).catch(() => null)])
+      return send(res, 200, { ok: true, ...list, engagement })
     }
 
     const body = await readJson(req)

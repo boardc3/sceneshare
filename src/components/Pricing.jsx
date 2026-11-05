@@ -22,7 +22,7 @@ export default function Pricing() {
     if (u) navigate('/plan')
   }
   return (
-    <section className="pricing" aria-labelledby="pricing-h" id="pricing">
+    <section className="pricing" aria-labelledby="pricing-h" id="pricing" data-section="pricing">
       <p className="story__eyebrow">{t('pricing.eyebrow')}</p>
       <h2 id="pricing-h">{t('pricing.title')}</h2>
       <p className="pricing__lede">{t('pricing.lede')}</p>

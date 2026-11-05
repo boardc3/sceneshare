@@ -632,6 +632,77 @@ export async function listShares(propertyId) {
   return { shares, totals: { ...totals, views: views?.views || 0 } }
 }
 
+// ---------------------------------------------------------------- engagement (lib/engagement.js)
+
+// For the owner: how long buyers spend on this home's share page and on what.
+// The owner's own visits are left out.
+export async function propertyEngagement(propertyId, ownerUserId = null) {
+  const s = await ensure()
+  if (!s) return null
+  const owner = ownerUserId || ''
+  const [v] = await s`with x as (
+      select session_id, sum((props->>'activeMs')::bigint) as ms from events
+      where name = 'engagement' and property_id = ${propertyId} and props->>'kind' = 'share' and coalesce(user_id, '') <> ${owner} and session_id is not null
+      group by session_id)
+    select count(*)::int as visits, coalesce(round(avg(ms)), 0)::bigint as avg_ms,
+      coalesce(round(percentile_cont(0.5) within group (order by ms)), 0)::bigint as median_ms, coalesce(sum(ms), 0)::bigint as total_ms from x`
+  const sections = await s`select kv.key as section, sum(kv.value::bigint)::bigint as ms
+    from events, jsonb_each_text(coalesce(props->'sections', '{}'::jsonb)) kv
+    where name = 'engagement' and property_id = ${propertyId} and props->>'kind' = 'share' and coalesce(user_id, '') <> ${owner}
+    group by 1 order by 2 desc`
+  const rooms = await s`select kv.key as photo, sum(kv.value::bigint)::bigint as ms
+    from events, jsonb_each_text(coalesce(props->'rooms', '{}'::jsonb)) kv
+    where name = 'engagement' and property_id = ${propertyId} and props->>'kind' = 'share' and coalesce(user_id, '') <> ${owner}
+    group by 1 order by 2 desc limit 12`
+  const num = (x) => Number(x || 0)
+  return {
+    visits: v?.visits || 0,
+    avgMs: num(v?.avg_ms),
+    medianMs: num(v?.median_ms),
+    totalMs: num(v?.total_ms),
+    sections: sections.map((r) => ({ section: r.section, ms: num(r.ms) })),
+    rooms: rooms.map((r) => ({ photoId: r.photo, ms: num(r.ms) })),
+  }
+}
+
+// For /admin: session length and where time goes, last N days.
+export async function siteEngagement(days = 7) {
+  const s = await ensure()
+  if (!s) return null
+  const since = new Date(Date.now() - days * 864e5).toISOString()
+  const [sess] = await s`with x as (
+      select session_id, min(at) as first_at, max(at) as last_at,
+        count(*) filter (where name = 'page_view') as pages,
+        coalesce(sum((props->>'activeMs')::bigint) filter (where name = 'engagement'), 0) as engaged
+      from events where at > ${since} and session_id is not null group by session_id)
+    select count(*)::int as sessions,
+      coalesce(round(avg(engaged)), 0)::bigint as avg_engaged,
+      coalesce(round(percentile_cont(0.5) within group (order by engaged)), 0)::bigint as median_engaged,
+      coalesce(round(avg(extract(epoch from (last_at - first_at)) * 1000)), 0)::bigint as avg_span,
+      coalesce(round(avg(pages)::numeric, 1), 0)::float as avg_pages,
+      count(*) filter (where engaged >= 60000)::int as over_minute
+    from x where pages > 0`
+  const pages = await s`select coalesce(props->>'kind', 'other') as page, count(distinct session_id)::int as sessions,
+      sum((props->>'activeMs')::bigint)::bigint as ms
+    from events where name = 'engagement' and at > ${since} group by 1 order by 3 desc`
+  const sections = await s`select coalesce(props->>'kind', 'other') as page, kv.key as section,
+      sum(kv.value::bigint)::bigint as ms, count(distinct session_id)::int as sessions
+    from events, jsonb_each_text(coalesce(props->'sections', '{}'::jsonb)) kv
+    where name = 'engagement' and at > ${since} group by 1, 2 order by 1, 3 desc`
+  const num = (x) => Number(x || 0)
+  return {
+    days,
+    sessions: sess?.sessions || 0,
+    avgEngagedMs: num(sess?.avg_engaged),
+    medianEngagedMs: num(sess?.median_engaged),
+    avgSpanMs: num(sess?.avg_span),
+    avgPages: Number(sess?.avg_pages || 0),
+    overMinute: sess?.over_minute || 0,
+    pages: pages.map((r) => ({ page: r.page, sessions: r.sessions, ms: num(r.ms), avgMs: r.sessions ? Math.round(num(r.ms) / r.sessions) : 0 })),
+    sections: sections.map((r) => ({ page: r.page, section: r.section, ms: num(r.ms), sessions: r.sessions })),
+  }
+}
+
 // ---------------------------------------------------------------- photos, designs, renders
 
 const photoRow = (propertyId, ph, user, position) => [
@@ -857,7 +928,8 @@ export async function adminOverview() {
   const privacy = await s`select id, at, kind, email, status, details from privacy_requests order by at desc limit 30`
   const shares = await s`select sh.created_at, sh.property_id, p.formatted_address, sh.channel, sh.by_owner, sh.recipient_count, sh.sent, sh.opens
     from shares sh left join properties p on p.id = sh.property_id order by sh.created_at desc limit 40`
-  return { totals: { ...totals, visitors7d, pageViews7d }, topEvents, topPages, routes, errors, clientErrors, leads, users, plans, billing, termsLog, properties, designs, privacy, shares }
+  const engagement = await siteEngagement(7).catch(() => null)
+  return { engagement, totals: { ...totals, visitors7d, pageViews7d }, topEvents, topPages, routes, errors, clientErrors, leads, users, plans, billing, termsLog, properties, designs, privacy, shares }
 }
 
 // ---------------------------------------------------------------- billing

@@ -48,7 +48,7 @@ export default function PropertyDetails({ property }) {
   const long = desc.length > 420
 
   return (
-    <section className="details" aria-labelledby="details-h">
+    <section className="details" aria-labelledby="details-h" data-section="details">
       <h2 id="details-h">{t('details.title')}</h2>
       <div className="details__grid">
         {rows.length > 0 && (
