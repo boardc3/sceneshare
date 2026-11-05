@@ -110,7 +110,8 @@ const PRO_FIX = `FIX — WHAT THE PROFESSIONAL DOES
 4. PRE-SHOOT TIDY (what the photographer would ask the agent to do)
 - Remove clutter: items on counters, tables, floors and shelves; personal photos, papers, fridge magnets, toiletries, cleaning products, cords and cables, trash and bins, toys, shoes, laundry, pet bowls and beds, cars in the driveway.
 - Tidy what stays: beds made with crisp linens, pillows plumped, cushions and throws straightened, rugs straight, chairs aligned, blinds and curtains evenly open, cabinet doors and drawers closed, toilet lid down, towels folded, TV and screens off and black, ceiling fans still.
-- Fill every cleared area with the real surface behind it. Small scuffs, stains and marks on walls and floors cleaned.
+- Fill every cleared area with the real surface behind it.
+- Deep clean, as after a professional cleaning crew: carpets freshly cleaned and evenly vacuumed with no stains, spots or traffic marks; hard floors, counters, glass and mirrors spotless; scuffs, marks and patches on walls and ceilings removed. Same materials and the same colours, just clean.
 5. EXTERIORS
 - If the sky is grey, white or blown out, replace it with a natural clear blue sky with a few soft clouds; keep the horizon, trees and buildings exactly. Lawns tidy and evenly green, hoses and bins removed; landscaping itself unchanged.`
 
