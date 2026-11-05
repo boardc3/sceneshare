@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
-import { homesLeft, loadBilling, manageBilling, periodShare, setCancel, upgrade, useBilling } from '../lib/billing.js'
+import { buyCredits, homesLeft, loadBilling, manageBilling, periodShare, setCancel, upgrade, useBilling } from '../lib/billing.js'
 import { Link, useRouter } from '../router.jsx'
 
 const money = (cents, lang) => new Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100)
@@ -30,7 +30,7 @@ function Meter({ label, used, limit, t }) {
 export default function Plan() {
   const { t, lang } = useI18n()
   const { user, ready } = useAuth()
-  const { billing: b, plans, prices } = useBilling()
+  const { billing: b, plans, prices, packs } = useBilling()
   const { navigate } = useRouter()
   const [busy, setBusy] = useState(null)
   const [msg, setMsg] = useState(null)
@@ -40,7 +40,14 @@ export default function Plan() {
     if (!user) return
     const q = new URLSearchParams(window.location.search)
     const back = q.get('checkout')
-    loadBilling({ sync: true }).then((nb) => {
+    const creditsBack = q.get('credits')
+    loadBilling({ sync: true, session: creditsBack === 'success' ? q.get('session_id') : null }).then((nb) => {
+      if (creditsBack === 'success') {
+        setMsg({ ok: true, text: (nb?.credits?.packs ?? 0) > 0 ? t('credits.added') : t('credits.processing') })
+        track('credits_buy_done', { mode: nb?.mode })
+      }
+      if (creditsBack === 'cancel') setMsg({ ok: false, text: t('credits.canceled') })
+      if (creditsBack) navigate('/plan#credits', { replace: true })
       if (back === 'success') {
         setMsg({ ok: true, text: nb?.plan === 'pro' ? t('plan.welcome') : t('plan.processing') })
         track('upgrade_done', { mode: nb?.mode })
@@ -49,6 +56,17 @@ export default function Plan() {
       if (back) navigate('/plan', { replace: true })
     })
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // /plan#credits (from the nav meter or an out-of-credits prompt): scroll to the packs.
+  const hasBilling = Boolean(b)
+  useEffect(() => {
+    if (!hasBilling) return
+    const go = (id) => id === 'credits' && setTimeout(() => document.getElementById('credits')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
+    go(window.location.hash.slice(1))
+    const on = (e) => go(e.detail)
+    window.addEventListener('ss:hash', on)
+    return () => window.removeEventListener('ss:hash', on)
+  }, [hasBilling])
 
   if (!ready) return <main id="main" className="page page--center"><span className="spinner" aria-hidden="true" /></main>
   if (!user) {
@@ -74,6 +92,7 @@ export default function Plan() {
       if (key === 'month' || key === 'year') setMsg({ ok: true, text: t('plan.welcome') })
       if (key === 'cancel') setMsg({ ok: true, text: t('plan.canceledMsg', { date: day(r.periodEnd, lang) }) })
       if (key === 'resume') setMsg({ ok: true, text: t('plan.resumedMsg') })
+      if (key.startsWith('pack:')) setMsg({ ok: true, text: t('credits.bought', { n: packs?.[key.slice(5)]?.credits ?? '' }) })
     } catch (e) {
       setMsg({ ok: false, text: e.message || t('err.generic') })
     }
@@ -138,11 +157,8 @@ export default function Plan() {
 
         <div className="plan__meters">
           <Meter t={t} label={t('plan.m.homes')} used={b.usage.homes} limit={b.limits.homes} />
-          {pro ? (
-            <Meter t={t} label={t('plan.m.runs')} used={b.usage.runs30d} limit={b.limits.runs30d} />
-          ) : (
-            <p className="fine">{t('plan.freeRules', { d: b.limits.designsPerHome, e: b.limits.emailsPerHome })}</p>
-          )}
+          {b.credits && !b.credits.unlimited && <Meter t={t} label={t('plan.m.credits')} used={b.credits.used} limit={b.credits.allotment} />}
+          {!pro && <p className="fine">{t('plan.freeRules', { d: b.limits.designsPerHome, e: b.limits.emailsPerHome })}</p>}
         </div>
 
         <div className="settings__row plan__actions">
@@ -165,14 +181,45 @@ export default function Plan() {
         </div>
       </section>
 
+      {b.credits && !b.credits.unlimited && packs && (
+        <section className="settings__card credits" id="credits" aria-labelledby="p-credits">
+          <div className="plan__head">
+            <div>
+              <p className="plan__label">{t('credits.sectionTitle')}</p>
+              <h2 id="p-credits">
+                {b.credits.available} <span className="credits__of">{t('credits.available')}</span>
+              </h2>
+            </div>
+            <div className="plan__days">
+              <strong>{b.credits.resetsInDays}</strong>
+              <span>{t('credits.daysToReset', { date: new Date(b.credits.resetsAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', day: 'numeric', ...(pro ? {} : { timeZone: 'UTC' }) }) })}</span>
+            </div>
+          </div>
+          <p>{t('credits.sectionBody', { n: b.credits.allotment })}</p>
+          {b.credits.packs > 0 && <p className="fine">{t('credits.extra')}: {t('credits.extraN', { n: b.credits.packs })}</p>}
+          <div className="credits__packs">
+            {Object.entries(packs).map(([key, pk]) => (
+              <article key={key} className="credits__pack">
+                <h3>{t('credits.pack', { n: pk.credits })}</h3>
+                <p className="fine">{t('credits.packPer', { price: new Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 3 }).format(pk.amount / 100 / pk.credits) })}</p>
+                <button type="button" className="btn btn--ink btn--small" disabled={!!busy} onClick={() => run(`pack:${key}`, () => buyCredits(key))}>
+                  {busy === `pack:${key}` ? t('auth.working') : t('credits.buyPack', { price: money(pk.amount, lang) })}
+                </button>
+              </article>
+            ))}
+          </div>
+          <p className="fine">{managed ? t('plan.secure') : t('credits.previewNote')}</p>
+        </section>
+      )}
+
       {!pro && (
         <section className="plan__grid" aria-label={t('plan.compare')}>
           <article className="plan__card">
             <h2>{t('plan.freeName')}</h2>
             <p className="plan__price">{money(0, lang)}</p>
             <ul>
-              {['f1', 'f2', 'f3', 'f4'].map((k) => (
-                <li key={k}>{t(`plan.free.${k}`, { d: plans?.free.designsPerHome ?? 2, e: plans?.free.emailsPerHome ?? 5 })}</li>
+              {['f1', 'f2', 'f5', 'f3', 'f4'].map((k) => (
+                <li key={k}>{t(`plan.free.${k}`, { d: plans?.free.designsPerHome ?? 2, e: plans?.free.emailsPerHome ?? 5, c: plans?.free.credits ?? 30 })}</li>
               ))}
             </ul>
             <p className="fine">{t('plan.youAreHere')}</p>
@@ -183,7 +230,7 @@ export default function Plan() {
               {money(prices?.month.amount || 5000, lang)} <span>{t('plan.perMonth')}</span>
             </p>
             <ul>
-              {['p1', 'p2', 'p3', 'p4', 'p5'].map((k) => (
+              {['p0', 'p1', 'p2', 'p3', 'p4', 'p5'].map((k) => (
                 <li key={k}>{t(`plan.pro.${k}`)}</li>
               ))}
             </ul>

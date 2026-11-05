@@ -169,8 +169,11 @@ function Terms() {
           renewal payment fails, Stripe may retry it, and Pro may end if the payment cannot be collected.
         </li>
         <li>
-          <strong>Limits and fair use.</strong> The free plan is limited in the number of homes, designs per home and emailed shares per home. Pro includes a
-          fair-use allowance of house restyles each 30 days to keep the Service fast for everyone; we will raise it on request for genuine use.
+          <strong>Limits and render credits.</strong> The free plan is limited in the number of homes, designs per home and emailed shares per home. Each
+          rendered image (a restyle, a clean-up or a requested change) uses one render credit; automatic retries we run to keep a room aligned do not. Each plan
+          includes a monthly allotment of credits (Pro: 300 a month), which resets at the start of each monthly cycle and does not roll over. Extra credits can be
+          bought in packs; bought credits do not expire while your account is open, are used only after the monthly allotment, and are not refundable except where
+          the law requires. A render that fails returns its credit.
         </li>
         <li>
           <strong>Preview and test periods.</strong> While payments are not switched on, upgrades may be offered free of charge for a stated period. No payment is

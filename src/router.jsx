@@ -13,8 +13,10 @@ export function Router({ children }) {
   const navigate = useCallback((to, { replace = false, state = null } = {}) => {
     if (replace) window.history.replaceState(state, '', to)
     else window.history.pushState(state, '', to)
-    setPath(new URL(to, window.location.origin).pathname)
+    const url = new URL(to, window.location.origin)
+    setPath(url.pathname)
     window.scrollTo(0, 0)
+    if (url.hash) window.dispatchEvent(new CustomEvent('ss:hash', { detail: url.hash.slice(1) }))
   }, [])
   return <Ctx.Provider value={{ path, navigate }}>{children}</Ctx.Provider>
 }

@@ -254,6 +254,21 @@ async function migrate(s) {
     data jsonb
   )`
   await s`create index if not exists billing_events_user_idx on billing_events (user_id, at desc)`
+  // Render credits. One row per rendered image (delta -1, pool 'plan:<plan>' = the
+  // monthly allotment, 'pack:<mode>' = bought credits, 'unmetered') and one per
+  // credit pack bought (delta +n, mode preview|test|live|comp).
+  await s`create table if not exists credit_ledger (
+    id text primary key,
+    user_id text not null,
+    at timestamptz not null default now(),
+    delta int not null,
+    kind text not null,
+    pool text,
+    mode text,
+    ref text,
+    data jsonb
+  )`
+  await s`create index if not exists credit_ledger_user_idx on credit_ledger (user_id, at desc)`
 
   await s`create table if not exists events (
     id bigserial primary key,
@@ -328,7 +343,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 7
+const SCHEMA_VERSION = 8
 
 async function upToDate(s) {
   try {
@@ -765,6 +780,7 @@ export async function deleteUserData(user) {
   await s`update billing_events set user_id = null where user_id = ${user.id}`
   await s`delete from terms_requests where owner_user_id = ${user.id}`
   await s`delete from terms_acceptances where user_id = ${user.id}`
+  await s`delete from credit_ledger where user_id = ${user.id}`
   await s`delete from users where id = ${user.id}`
   return { properties: props.length }
 }
@@ -879,6 +895,58 @@ export async function recordBillingEvent({ id, source, type, userId = null, data
   const s = await ensure()
   if (!s) return true
   const rows = await s`insert into billing_events (id, source, type, user_id, data) values (${id}, ${source}, ${type}, ${userId}, ${j(data)}::jsonb)
+    on conflict (id) do nothing returning id`
+  return rows.length > 0
+}
+
+// ---------------------------------------------------------------- credits
+
+// What the account has used this cycle and how many bought credits remain.
+export async function creditBalance(userId, { since, packPool, planPool }) {
+  const s = await ensure()
+  if (!s) return { planUsed: 0, cycleUsed: 0, packs: 0 }
+  const [r] = await s`select
+      (select count(*)::int from credit_ledger where user_id = ${userId} and pool = ${planPool} and at >= ${since}) as plan_used,
+      (select count(*)::int from credit_ledger where user_id = ${userId} and delta < 0 and at >= ${since}) as cycle_used,
+      (select coalesce(sum(delta), 0)::int from credit_ledger where user_id = ${userId} and ((delta > 0 and mode = ${packPool.slice(5)}) or pool = ${packPool})) as packs`
+  return { planUsed: r?.plan_used || 0, cycleUsed: r?.cycle_used || 0, packs: Math.max(0, r?.packs || 0) }
+}
+
+// Take one credit: from the monthly allotment while it lasts, then from bought
+// credits. One statement, so parallel renders can't spend the same credit twice
+// in the common case. Returns the pool charged, or null when nothing is left.
+export async function debitCredit(userId, { id, kind, since, allotment, packPool, planPool, ref = null, unmetered = false }) {
+  const s = await ensure()
+  if (!s) return 'unmetered'
+  if (unmetered) {
+    await s`insert into credit_ledger (id, user_id, delta, kind, pool, ref) values (${id}, ${userId}, -1, ${kind}, 'unmetered', ${ref})`
+    return 'unmetered'
+  }
+  const rows = await s`with st as (
+      select
+        (select count(*) from credit_ledger where user_id = ${userId} and pool = ${planPool} and at >= ${since}) as used,
+        (select coalesce(sum(delta), 0) from credit_ledger where user_id = ${userId} and ((delta > 0 and mode = ${packPool.slice(5)}) or pool = ${packPool})) as packs
+    )
+    insert into credit_ledger (id, user_id, delta, kind, pool, ref)
+    select ${id}, ${userId}, -1, ${kind}, case when st.used < ${allotment} then ${planPool} else ${packPool} end, ${ref} from st
+    where st.used < ${allotment} or st.packs > 0
+    returning pool`
+  return rows[0]?.pool || null
+}
+
+// A render that failed gives its credit back.
+export async function refundCredit(id) {
+  const s = await ensure()
+  if (!s) return
+  await s`delete from credit_ledger where id = ${id} and delta < 0`
+}
+
+// Credits bought (or granted). Idempotent on id, so a webhook and the return
+// from Checkout can both apply the same purchase.
+export async function addCredits(userId, { id, credits, mode, kind = 'purchase', ref = null, data = null }) {
+  const s = await ensure()
+  if (!s) return false
+  const rows = await s`insert into credit_ledger (id, user_id, delta, kind, mode, ref, data) values (${id}, ${userId}, ${credits}, ${kind}, ${mode}, ${ref}, ${j(data)}::jsonb)
     on conflict (id) do nothing returning id`
   return rows.length > 0
 }

@@ -11,7 +11,7 @@ import { post, retriable, sleep } from './api.js'
 const CONCURRENCY = 3
 const BACKOFF = [4000, 10000, 20000]
 // Errors no retry can fix: stop the whole run and say why.
-const FATAL = new Set(['render_billing', 'render_not_configured', 'sign_in_required', 'not_owner', 'design_missing', 'accounts_not_configured', 'storage_not_configured'])
+const FATAL = new Set(['plan_limit', 'render_billing', 'render_not_configured', 'sign_in_required', 'not_owner', 'design_missing', 'accounts_not_configured', 'storage_not_configured'])
 
 export function useHouseRun({ propertyId, lang, onRendered, onFinished }) {
   const [run, setRun] = useState(null)

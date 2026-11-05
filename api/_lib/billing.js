@@ -1,16 +1,23 @@
 import crypto from 'node:crypto'
 import { billingState, config } from './config.js'
-import { getBillingRow, recordBillingEvent, setBilling, usageFor } from './db.js'
+import { addCredits, creditBalance, debitCredit, getBillingRow, recordBillingEvent, refundCredit, setBilling, usageFor } from './db.js'
 import { isAdmin } from './gate.js'
 import { ApiError } from './http.js'
 
 // Plans (Sceneshare business plan, 2026-11-04): Free and Pro at $50/month or
 // $500/year. Limits are checked on the server; the browser only displays them.
+// Every rendered image (a restyle, a clean-up or a change request) costs one
+// credit; a take the alignment check throws away and refires is on us. Credits
+// reset monthly; bought credit packs never expire and are used after the allotment.
 export const PLANS = {
-  free: { homes: 1, designsPerHome: 2, emailsPerHome: 5, runs30d: null },
-  pro: { homes: null, designsPerHome: null, emailsPerHome: null, runs30d: 40 }, // fair use
+  free: { homes: 1, designsPerHome: 2, emailsPerHome: 5, credits: 30 },
+  pro: { homes: null, designsPerHome: null, emailsPerHome: null, credits: 300 },
 }
 export const PRICES = { month: { amount: 5000, currency: 'usd' }, year: { amount: 50000, currency: 'usd' } }
+export const CREDIT_PACKS = {
+  c100: { credits: 100, amount: 1500, currency: 'usd' },
+  c500: { credits: 500, amount: 6000, currency: 'usd' },
+}
 const PREVIEW_DAYS = { month: 30, year: 365 }
 // A failed renewal keeps Pro this long while Stripe retries the card.
 const GRACE_MS = 3 * 864e5
@@ -42,12 +49,88 @@ export function entitlement(row, user = null) {
   return { ...base, plan: paid && sourceMatches ? 'pro' : 'free' }
 }
 
+// ---------------------------------------------------------------- credits
+
+const addMonths = (d, n) => {
+  const x = new Date(d)
+  const day = x.getUTCDate()
+  x.setUTCDate(1)
+  x.setUTCMonth(x.getUTCMonth() + n)
+  const last = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate()
+  x.setUTCDate(Math.min(day, last))
+  return x
+}
+
+// The monthly credit cycle. Pro follows the subscription's renewal date (a yearly
+// plan resets on the same day each month); everyone else resets on the 1st (UTC).
+export function creditCycle(ent, now = new Date()) {
+  if (ent.plan === 'pro' && ent.periodEnd) {
+    let start = new Date(ent.periodEnd)
+    for (let i = 0; i < 14 && start > now; i++) start = addMonths(start, -1)
+    return { start, next: addMonths(start, 1) }
+  }
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+  return { start, next: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)) }
+}
+
+const packPoolFor = (mode) => `pack:${mode === 'off' ? 'live' : mode}`
+const unmeteredFor = (ent) => Boolean(ent.unlimited || ent.source === 'admin')
+
+async function creditsFor(user, ent) {
+  const cyc = creditCycle(ent)
+  const allotment = PLANS[ent.plan].credits
+  const c = await creditBalance(user.id, { since: cyc.start.toISOString(), packPool: packPoolFor(ent.mode), planPool: `plan:${ent.plan}` })
+  const planLeft = Math.max(0, allotment - c.planUsed)
+  return {
+    unlimited: unmeteredFor(ent),
+    allotment,
+    used: Math.min(allotment, c.planUsed),
+    usedThisCycle: c.cycleUsed,
+    planLeft,
+    packs: c.packs,
+    available: planLeft + c.packs,
+    cycleStart: cyc.start.toISOString(),
+    resetsAt: cyc.next.toISOString(),
+    resetsInDays: Math.max(0, Math.ceil((cyc.next - Date.now()) / 864e5)),
+  }
+}
+
 export async function billingFor(user, propertyId = null) {
   const row = await getBillingRow(user.id)
   const ent = entitlement(row, user)
   const limits = PLANS[ent.plan]
-  const usage = await usageFor(user.id, propertyId)
-  return { ...ent, limits: ent.unlimited ? PLANS.pro : limits, usage }
+  const [usage, credits] = await Promise.all([usageFor(user.id, propertyId), creditsFor(user, ent)])
+  return { ...ent, limits: ent.unlimited ? PLANS.pro : limits, usage, credits }
+}
+
+export async function creditsOnly(user) {
+  const ent = entitlement(await getBillingRow(user.id), user)
+  return creditsFor(user, ent)
+}
+
+// Upgrading starts a fresh allotment: each plan counts only its own spends.
+// Charge one credit before an image is generated. Returns a refund function for
+// when the render fails; throws 402 when the account has no credits left.
+export async function chargeCredit(user, { kind, ref }) {
+  const ent = entitlement(await getBillingRow(user.id), user)
+  const cyc = creditCycle(ent)
+  const id = `cr_${crypto.randomUUID()}`
+  const pool = await debitCredit(user.id, {
+    id,
+    kind,
+    ref,
+    since: cyc.start.toISOString(),
+    allotment: PLANS[ent.plan].credits,
+    packPool: packPoolFor(ent.mode),
+    planPool: `plan:${ent.plan}`,
+    unmetered: unmeteredFor(ent),
+  })
+  if (!pool) {
+    const err = limitError('credits', PLANS[ent.plan].credits, ent)
+    err.extra.resetsAt = cyc.next.toISOString()
+    throw err
+  }
+  return { id, pool, refund: () => refundCredit(id) }
 }
 
 // ---------------------------------------------------------------- limit checks
@@ -57,7 +140,7 @@ function limitError(kind, limit, ent) {
     homes: `The Free plan includes ${limit} home. Upgrade to Pro for unlimited homes.`,
     designs: `The Free plan includes ${limit} designs per home. Upgrade to Pro for unlimited designs.`,
     emails: `The Free plan includes ${limit} emailed shares per home. Upgrade to Pro, or copy the link instead.`,
-    runs: `You’ve restyled ${limit} houses in the last 30 days, Pro’s fair-use limit. Contact us and we’ll lift it.`,
+    credits: `You’ve used all ${limit} render credits for this month. Buy more credits${ent.plan === 'pro' ? '' : ' or upgrade to Pro'} to keep rendering.`,
   }[kind]
   return new ApiError(402, 'plan_limit', msg, { limit: kind, max: limit, plan: ent.plan })
 }
@@ -71,7 +154,7 @@ export async function assertCanAddHome(user) {
 export async function assertCanAddDesign(user, propertyId, { photoOnly = false } = {}) {
   const b = await billingFor(user, propertyId)
   if (!photoOnly && b.limits.designsPerHome != null && b.usage.designs >= b.limits.designsPerHome) throw limitError('designs', b.limits.designsPerHome, b)
-  if (b.limits.runs30d != null && b.usage.runs30d >= b.limits.runs30d) throw limitError('runs', b.limits.runs30d, b)
+  if (!b.credits.unlimited && b.credits.available <= 0) throw limitError('credits', b.credits.allotment, b)
   return b
 }
 
@@ -171,6 +254,50 @@ export async function checkoutSession(user, interval, origin) {
   })
   await recordBillingEvent({ id: `co_${s.id}`, source: 'stripe', type: 'checkout_started', userId: user.id, data: { interval, session: s.id } })
   return s.url
+}
+
+// ---------------------------------------------------------------- credit packs
+
+export async function previewBuyCredits(user, packKey) {
+  const pack = CREDIT_PACKS[packKey]
+  if (!pack) throw new ApiError(400, 'bad_pack', 'Unknown credit pack.')
+  const id = `prev_${crypto.randomUUID()}`
+  await addCredits(user.id, { id, credits: pack.credits, mode: 'preview', ref: packKey })
+  await recordBillingEvent({ id, source: 'preview', type: 'credits', userId: user.id, data: { pack: packKey, credits: pack.credits } })
+}
+
+export async function creditsCheckout(user, packKey, origin) {
+  const pack = CREDIT_PACKS[packKey]
+  if (!pack) throw new ApiError(400, 'bad_pack', 'Unknown credit pack.')
+  const row = await getBillingRow(user.id)
+  const customer = await customerFor(user, row)
+  const s = await stripe('POST', 'checkout/sessions', {
+    mode: 'payment',
+    customer,
+    client_reference_id: user.id,
+    line_items: { 0: { quantity: 1, price_data: { currency: pack.currency, unit_amount: pack.amount, product_data: { name: `Sceneshare render credits × ${pack.credits}` } } } },
+    payment_intent_data: { metadata: { userId: user.id, kind: 'credits', pack: packKey } },
+    metadata: { userId: user.id, kind: 'credits', pack: packKey, credits: String(pack.credits) },
+    success_url: `${origin}/plan?credits=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/plan?credits=cancel`,
+  })
+  await recordBillingEvent({ id: `co_${s.id}`, source: 'stripe', type: 'credits_checkout_started', userId: user.id, data: { pack: packKey, session: s.id } })
+  return s.url
+}
+
+// Add a paid Checkout session's credits (from the webhook or the return page).
+export async function applyCreditSession(userId, session) {
+  if (session?.metadata?.kind !== 'credits' || session.payment_status !== 'paid') return false
+  const pack = CREDIT_PACKS[session.metadata.pack]
+  if (!pack) return false
+  return addCredits(userId, { id: `cs_${session.id}`, credits: pack.credits, mode: session.livemode ? 'live' : 'test', ref: session.metadata.pack, data: { session: session.id, amount: session.amount_total } })
+}
+
+export async function syncCreditSession(user, sessionId) {
+  if (!/^cs_[A-Za-z0-9_]+$/.test(String(sessionId || ''))) return false
+  const s = await stripe('GET', `checkout/sessions/${sessionId}`)
+  if (s.client_reference_id !== user.id && s.metadata?.userId !== user.id) return false
+  return applyCreditSession(user.id, s)
 }
 
 export async function portalSession(user, origin) {

@@ -3,9 +3,10 @@ import { useI18n } from '../i18n.js'
 import { consent, gpc, onConsent, setConsent, track } from '../lib/analytics.js'
 import { acceptTerms, currentUser, onAuthRequest, onTermsRequest, requestReset, signInEmail, signInGoogle, signOut, signUpEmail, useAuth } from '../lib/auth.js'
 import { post } from '../lib/api.js'
-import { homesLeft, loadBilling, useBilling } from '../lib/billing.js'
+import { loadBilling } from '../lib/billing.js'
 import { isEmail } from '../lib/format.js'
 import { Link, useRouter } from '../router.jsx'
+import CreditMeter from './CreditMeter.jsx'
 import PasswordInput from './PasswordInput.jsx'
 
 export function Nav({ tone = 'light' }) {
@@ -44,7 +45,7 @@ export function Nav({ tone = 'light' }) {
             中文
           </button>
         </div>
-        {ready && user && <PlanBadge />}
+        {ready && user && <CreditMeter />}
         {!ready ? (
           <span className="nav__signin nav__signin--wait" aria-hidden="true" />
         ) : user ? (
@@ -91,40 +92,6 @@ export function Nav({ tone = 'light' }) {
         )}
       </nav>
     </header>
-  )
-}
-
-// "Free · 1 home left" / "Pro · 23 days left" beside the account menu.
-function PlanBadge() {
-  const { t } = useI18n()
-  const { billing: b } = useBilling()
-  if (!b || b.mode === 'off') return null
-  const pro = b.plan === 'pro'
-  let detail = ''
-  let short = ''
-  if (pro && b.source !== 'admin' && b.daysLeft != null) {
-    detail = t(b.cancelAtPeriodEnd ? 'plan.badge.ends' : 'plan.badge.days', { n: b.daysLeft })
-    short = t('plan.badge.shortDays', { n: b.daysLeft })
-  } else if (pro && b.source === 'admin') detail = t('plan.badge.admin')
-  else if (!pro) {
-    const left = homesLeft(b)
-    if (left != null) {
-      detail = t(left === 1 ? 'plan.badge.home' : 'plan.badge.homes', { n: left })
-      short = t('plan.badge.shortHomes', { n: left })
-    }
-  }
-  const warn = (pro && b.daysLeft != null && b.daysLeft <= 5) || (!pro && homesLeft(b) === 0)
-  return (
-    <Link to="/plan" className={`planbadge ${pro ? 'planbadge--pro' : ''} ${warn ? 'planbadge--warn' : ''}`} title={t('plan.badge.title')}>
-      <strong>{pro ? 'Pro' : t('plan.free')}</strong>
-      {detail && <span className="planbadge__detail">{detail}</span>}
-      {short && (
-        <span className="planbadge__short" aria-hidden="true">
-          {short}
-        </span>
-      )}
-      {(b.mode === 'preview' || b.mode === 'test') && <span className="planbadge__mode">{t(`plan.mode.${b.mode}.short`)}</span>}
-    </Link>
   )
 }
 
@@ -247,10 +214,10 @@ export function UpgradePrompt() {
           className="btn btn--glow"
           onClick={() => {
             close()
-            navigate('/plan')
+            navigate(info.limit === 'credits' ? '/plan#credits' : '/plan')
           }}
         >
-          {info.limit === 'runs' ? t('plan.seePlan') : t('plan.seePro')}
+          {info.limit === 'credits' ? t('credits.buyMore') : t('plan.seePro')}
         </button>
         <button type="button" className="btn btn--quiet" onClick={close}>
           {t('plan.notNow')}

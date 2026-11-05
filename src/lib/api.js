@@ -25,6 +25,8 @@ async function handle(r) {
     if (err.code === 'terms_required') window.dispatchEvent(new CustomEvent('ss:terms-required'))
     throw err
   }
+  // Renders return the account's credit balance; the nav meter follows it.
+  if (data.credits) window.dispatchEvent(new CustomEvent('ss:credits', { detail: data.credits }))
   return data
 }
 

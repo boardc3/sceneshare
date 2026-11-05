@@ -1,5 +1,5 @@
 import { originOf } from '../_lib/auth.js'
-import { PLANS, PRICES, applySubscription, billingFor, checkoutSession, portalSession, previewSetCancel, previewSubscribe, syncFromStripe, verifyWebhook } from '../_lib/billing.js'
+import { CREDIT_PACKS, PLANS, PRICES, applyCreditSession, applySubscription, billingFor, checkoutSession, creditsCheckout, portalSession, previewBuyCredits, previewSetCancel, previewSubscribe, syncCreditSession, syncFromStripe, verifyWebhook } from '../_lib/billing.js'
 import { billingState, config } from '../_lib/config.js'
 import { ensureUserRow, logSubmission, recordBillingEvent, userByStripeCustomer } from '../_lib/db.js'
 import { requireUser, validId } from '../_lib/gate.js'
@@ -7,6 +7,8 @@ import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 
 // GET  /api/billing[?propertyId=…][&sync=1]   the account's plan, limits, usage and days left
 // POST /api/billing { op: 'checkout', interval: 'month'|'year' }   → { url } (Stripe) or the new plan (preview)
+// POST /api/billing { op: 'credits', pack: 'c100'|'c500' }        → { url } (Stripe) or the new balance (preview)
+// GET  /api/billing?session=cs_…                                  apply a paid credit purchase on return from Checkout
 // POST /api/billing { op: 'portal' }                               → { url } Stripe's billing portal
 // POST /api/billing { op: 'cancel' | 'resume' }                    preview mode only
 // POST /api/billing?webhook=1                                      Stripe webhooks (signed)
@@ -43,6 +45,9 @@ async function webhook(req, res) {
   if (SUB_EVENTS.includes(event.type)) {
     const row = await applySubscription(userId, obj)
     console.log(JSON.stringify({ t: 'billing', msg: 'subscription', type: event.type, userId, status: obj.status, plan: row?.plan }))
+  } else if (event.type === 'checkout.session.completed' && obj.metadata?.kind === 'credits') {
+    const added = await applyCreditSession(userId, obj)
+    console.log(JSON.stringify({ t: 'billing', msg: 'credits purchased', userId, session: obj.id, added }))
   } else if (event.type === 'checkout.session.completed' && obj.subscription) {
     console.log(JSON.stringify({ t: 'billing', msg: 'checkout completed', userId, session: obj.id }))
   } else if (event.type === 'invoice.payment_failed') {
@@ -63,9 +68,10 @@ export default route(
 
     if (req.method === 'GET') {
       if (q.sync === '1' && (mode === 'test' || mode === 'live')) await syncFromStripe(user).catch((e) => console.error(JSON.stringify({ t: 'billing', msg: 'sync failed', err: e.message })))
+      if (q.session && (mode === 'test' || mode === 'live')) await syncCreditSession(user, q.session).catch((e) => console.error(JSON.stringify({ t: 'billing', msg: 'credit sync failed', err: e.message })))
       const b = await billingFor(user, validId(q.propertyId) ? q.propertyId : null)
       res._meta = { plan: b.plan, mode }
-      return send(res, 200, { ok: true, billing: b, plans: PLANS, prices: PRICES })
+      return send(res, 200, { ok: true, billing: b, plans: PLANS, prices: PRICES, packs: CREDIT_PACKS })
     }
 
     const body = await readJson(req)
@@ -83,6 +89,18 @@ export default route(
       }
       const url = await checkoutSession(user, interval, origin)
       await logSubmission({ user, kind: 'checkout_start', meta: { interval, mode } })
+      return send(res, 200, { ok: true, url })
+    }
+    if (op === 'credits') {
+      const pack = String(body.pack || '')
+      if (!CREDIT_PACKS[pack]) throw new ApiError(400, 'bad_pack', 'Unknown credit pack.')
+      if (mode === 'preview') {
+        await previewBuyCredits(user, pack)
+        await logSubmission({ user, kind: 'credits_buy', meta: { pack, mode } })
+        return send(res, 200, { ok: true, preview: true, billing: await billingFor(user) })
+      }
+      const url = await creditsCheckout(user, pack, origin)
+      await logSubmission({ user, kind: 'credits_checkout', meta: { pack, mode } })
       return send(res, 200, { ok: true, url })
     }
     if (op === 'portal') {

@@ -1,4 +1,5 @@
 import { normalizeProperty, addVersion } from '../shared/model.js'
+import { chargeCredit, creditsOnly } from './_lib/billing.js'
 import { logSubmission, mutateProperty, saveRender, upsertDesign } from './_lib/db.js'
 import { newId, requireOwner, requireUser } from './_lib/gate.js'
 import { generateImage } from './_lib/gemini.js'
@@ -43,6 +44,19 @@ export default route(
       if (!base) throw new ApiError(400, 'current_required', 'Restyle this photo before asking for changes.')
     }
 
+    // One credit per delivered image, taken up front and given back if this fails.
+    const charge = await chargeCredit(user, { kind: base ? 'feedback' : 'render', ref: `${p.id}/${design.id}/${photo.id}` })
+    try {
+      return await renderOne({ req, res, body, user, p, photo, design, base, feedback, charge })
+    } catch (e) {
+      await charge.refund().catch(() => {})
+      throw e
+    }
+  },
+  { name: 'render', before: requireUser, limit: { hour: 400, day: 1500 } },
+)
+
+async function renderOne({ res, body, user, p, photo, design, base, feedback, charge }) {
     const started = Date.now()
     const source = await normalize(await loadImageInput(photo.src), 2048)
     const images = [{ buffer: source.buffer, mimeType: 'image/jpeg' }]
@@ -114,8 +128,7 @@ export default route(
         meta: { versionId, designId: design.id, photoId: photo.id, mode: version.mode, style: version.style, light: version.light, feedback: feedback || undefined, ms: version.ms, model: out.model, align: version.align, attempts },
       }),
     )
-    res._meta = { ...res._meta, versionId, ms: version.ms, align: version.align, attempts, model: out.model }
-    send(res, 200, { ok: true, version, design: saved })
-  },
-  { name: 'render', before: requireUser, limit: { hour: 400, day: 1500 } },
-)
+    res._meta = { ...res._meta, versionId, ms: version.ms, align: version.align, attempts, model: out.model, credit: charge.pool }
+    const credits = await creditsOnly(user).catch(() => null)
+    send(res, 200, { ok: true, version, design: saved, credits })
+}

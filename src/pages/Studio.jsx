@@ -15,6 +15,7 @@ import { get, health, post, recalledProperty, retriable, shrinkPhoto, sleep } fr
 import { ensureTerms, requireSignIn, useAuth } from '../lib/auth.js'
 import { defaultSides, designLabel, designName, sideImage, shortSideLabel } from '../lib/designs.js'
 import { lotSqft } from '../lib/format.js'
+import { useBilling } from '../lib/billing.js'
 import { useHouseRun } from '../lib/houseRun.js'
 import { Link, useRouter } from '../router.jsx'
 
@@ -653,6 +654,7 @@ export default function Studio({ id }) {
               {starting ? t('design.starting') : mode === 'polish' ? t('studio.renderPolish', { n: visible.length }) : mode === 'cleanup' ? t('studio.renderPro', { n: visible.length }) : t('studio.render', { n: visible.length })}
             </button>
             <p className="fine">{t('studio.renderNote', { min: Math.max(1, Math.round((Math.ceil(visible.length / 3) * 30) / 60)) })}</p>
+            <RunCost need={visible.length} />
           </div>
         </div>
       </section>
@@ -670,5 +672,23 @@ export default function Studio({ id }) {
       {run && <HouseProgress run={run} photos={photos} onStop={stop} onRetry={retryRun} onClose={close} />}
       {prPhotos && <PhotoRestyle photos={prPhotos} styles={STYLES} lights={LIGHTS} busy={prBusy} onStart={restylePhotos} onClose={() => (setPrPhotos(null), track('photo_restyle_dismiss', null, { propertyId: id }))} />}
     </main>
+  )
+}
+
+// "Uses 15 credits · 268 left", or a warning when the run would stop part-way.
+function RunCost({ need }) {
+  const { t } = useI18n()
+  const { billing: b } = useBilling()
+  const c = b?.credits
+  if (!c || !need || b.mode === 'off') return null
+  if (c.unlimited) return <p className="runcost">{t('credits.run', { n: need })}</p>
+  const short = c.available < need
+  return (
+    <p className={`runcost ${short ? 'runcost--short' : ''}`}>
+      {short ? t('credits.runShort', { n: need, left: c.available }) : t('credits.runLeft', { n: need, left: c.available - need })}{' '}
+      {short && (
+        <Link to="/plan#credits">{t('credits.buyMore')}</Link>
+      )}
+    </p>
   )
 }
