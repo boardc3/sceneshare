@@ -4,14 +4,14 @@ import { activeExtras, addCredits, addExtra, creditBalance, debitCredit, getBill
 import { isAdmin } from './gate.js'
 import { ApiError } from './http.js'
 
-// Plans (Chris, 2026-11-04): a 14-day free trial, then Entry ($49/month, 2 homes)
+// Plans (Chris, 2026-11-04): a 7-day free trial, then Entry ($49/month, 2 homes)
 // or Premium ($99/month, 5 homes). Yearly is 10× monthly. Premium accounts buy
 // extra properties as they need them — not a plan: $15 per property slot for 30
 // days, each with 30 re-render credits that never expire (5 for $75). Every rendered image costs one credit; a take the
 // alignment check throws away and refires is on us. Credits reset monthly; bought
 // credit packs never expire and are used after the allotment. Limits are checked
 // on the server; the browser only displays them.
-export const TRIAL_DAYS = 14
+export const TRIAL_DAYS = 7
 export const TIERS = ['entry', 'premium']
 export const PLANS = {
   trial: { homes: 2, credits: 50, emailsPerHome: 10, designsPerHome: null },

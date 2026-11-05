@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import AddressSearch from '../components/AddressSearch.jsx'
 import Compare from '../components/Compare.jsx'
 import HeroMap from '../components/HeroMap.jsx'
+import Pricing from '../components/Pricing.jsx'
 import Story from '../components/Story.jsx'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
@@ -136,6 +137,8 @@ export default function Landing() {
           <p>{t('loc.body')}</p>
         </div>
       </section>
+
+      <Pricing />
     </main>
   )
 }

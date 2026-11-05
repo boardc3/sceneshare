@@ -58,7 +58,7 @@ Leaflet/Esri rule for this project, at Chris's request (2026-11-04).
 
 ## Plans and billing
 
-New accounts get a 14-day free trial (2 homes, 50 render credits, 10 emailed shares per home).
+New accounts get a 7-day free trial (2 homes, 50 render credits, 10 emailed shares per home).
 Entry: $49/month or $490/year, 2 homes, 150 render credits a month.
 Premium: $99/month or $990/year, 5 homes, 300 render credits a month; each add-on
 ($75/month or $750/year) adds 5 homes and 150 credits.

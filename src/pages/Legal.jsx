@@ -146,7 +146,7 @@ function Terms() {
 
       <h2 id="subscriptions">10. Plans, subscriptions and automatic renewal</h2>
       <p>
-        New accounts start with a <strong>14-day free trial</strong>. After it, Sceneshare is offered on paid plans, <strong>Entry</strong> and <strong>Premium</strong>, with extra properties available to Premium accounts. The current prices, what each plan includes and its limits are shown on the{' '}
+        New accounts start with a <strong>7-day free trial</strong>. After it, Sceneshare is offered on paid plans, <strong>Entry</strong> and <strong>Premium</strong>, with extra properties available to Premium accounts. The current prices, what each plan includes and its limits are shown on the{' '}
         <Link to="/plan">Plan and billing</Link> page before you subscribe.
       </p>
       <ul>

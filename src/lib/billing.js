@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react'
 import { track } from './analytics.js'
 import { get, post } from './api.js'
 
-let state = { ready: false, billing: null, plans: null, prices: null, packs: null, extra: null, trialDays: 14 }
+let state = { ready: false, billing: null, plans: null, prices: null, packs: null, extra: null, trialDays: 7 }
 const subs = new Set()
 function set(patch) {
   state = { ...state, ...patch }
@@ -99,7 +99,7 @@ export async function setCancel(cancel) {
 
 // How much of a period is used, for the progress bar.
 export function periodShare(b) {
-  if (b?.plan === 'trial' && b.trial) return Math.max(0, Math.min(1, b.trial.daysLeft / 14))
+  if (b?.plan === 'trial' && b.trial) return Math.max(0, Math.min(1, b.trial.daysLeft / (state.trialDays || 7)))
   if (!b?.periodEnd || b.daysLeft == null) return null
   const total = b.interval === 'year' ? 365 : 30
   return Math.max(0, Math.min(1, b.daysLeft / total))

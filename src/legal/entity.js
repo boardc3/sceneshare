@@ -3,7 +3,7 @@
 export const LEGAL = {
   operator: 'Sceneset AI',
   service: 'Sceneshare',
-  contactEmail: 'chris@ccolbert.com',
+  contactEmail: 'Chris@sceneset.ai',
   effective: 'November 4, 2026',
   site: 'sceneshare.app',
 }
