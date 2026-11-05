@@ -411,6 +411,9 @@ export default function Studio({ id }) {
             <button type="button" aria-pressed={mode === 'redesign'} onClick={() => setMode('redesign')}>
               {t('studio.mode.redesign')}
             </button>
+            <button type="button" aria-pressed={mode === 'cleanup'} onClick={() => setMode('cleanup')}>
+              {t('studio.mode.cleanup')}
+            </button>
             <button type="button" aria-pressed={mode === 'polish'} onClick={() => setMode('polish')}>
               {t('studio.mode.polish')}
             </button>
@@ -443,7 +446,7 @@ export default function Studio({ id }) {
           )}
           <div className="newdesign__go">
             <button type="button" className="btn btn--glow btn--big" onClick={restyleHouse} disabled={!canRender || starting || !visible.length || run?.status === 'running'}>
-              {starting ? t('design.starting') : mode === 'polish' ? t('studio.renderPolish', { n: visible.length }) : t('studio.render', { n: visible.length })}
+              {starting ? t('design.starting') : mode === 'polish' ? t('studio.renderPolish', { n: visible.length }) : mode === 'cleanup' ? t('studio.renderPro', { n: visible.length }) : t('studio.render', { n: visible.length })}
             </button>
             <p className="fine">{t('studio.renderNote', { min: Math.max(1, Math.round((Math.ceil(visible.length / 3) * 30) / 60)) })}</p>
           </div>

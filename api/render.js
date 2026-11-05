@@ -5,7 +5,7 @@ import { generateImage } from './_lib/gemini.js'
 import { ApiError, readJson, route, send } from './_lib/http.js'
 import { alignmentScore } from './_lib/align.js'
 import { fitTo, nearestRatio, normalize, outputSize } from './_lib/images.js'
-import { buildFeedbackPrompt, buildRenderPrompt, RETRY_PREFIX } from './_lib/prompts.js'
+import { buildFeedbackPrompt, buildRenderPrompt, PRO_RETRY_PREFIX, RETRY_PREFIX } from './_lib/prompts.js'
 import { background } from './_lib/log.js'
 import { loadImageInput } from './_lib/source.js'
 import { storeImage } from './_lib/storage.js'
@@ -15,6 +15,9 @@ export const maxDuration = 300
 // Edge-correlation floor, calibrated 2026-11-04 on the landing demo: aligned
 // restyle 0.42, drifted takes 0.25-0.28, 2% camera shift 0.39, 12% zoom-out 0.03.
 const ALIGN_MIN = 0.32
+// "Make it professional" may straighten verticals and level the camera, which moves
+// edges on purpose; only a take that rebuilt the room falls this low.
+const ALIGN_MIN_PRO = 0.12
 
 // One photo of one design: the design's restyle (or relight), or a change request
 // on the design's current image. The photo and the design are read from the saved
@@ -58,9 +61,10 @@ export default route(
     let out = await generateImage({ prompt, images, aspectRatio, deadline: started + 200000 })
     let score = await alignmentScore(source.buffer, source.width, source.height, out.buffer).catch(() => 1)
     let attempts = 1
-    if (score < ALIGN_MIN && Date.now() - started < 120000) {
+    const pro = !base && design.mode === 'cleanup'
+    if (score < (pro ? ALIGN_MIN_PRO : ALIGN_MIN) && Date.now() - started < 120000) {
       try {
-        const again = await generateImage({ prompt: RETRY_PREFIX + prompt, images, aspectRatio, deadline: started + 250000 })
+        const again = await generateImage({ prompt: (pro ? PRO_RETRY_PREFIX : RETRY_PREFIX) + prompt, images, aspectRatio, deadline: started + 250000 })
         const s2 = await alignmentScore(source.buffer, source.width, source.height, again.buffer).catch(() => 0)
         attempts = 2
         if (s2 > score) {

@@ -80,11 +80,60 @@ const POLISH = `TASK — POLISH ONLY (RELIGHT + PHOTO FINISH)
 Keep EVERYTHING in the photograph as it is: the same furniture, the same finishes, the same objects in the same places, the same colours of every material. Do not restyle, re-furnish or redecorate.
 Only: correct exposure and white balance, relight as specified below, tidy obvious clutter (loose cables, small mess), straighten nothing that would move the camera, and give it a professional editorial photo finish.`
 
-const CLEANUP = `TASK — CLEAN UP FOR A LISTING PHOTOGRAPH (DECLUTTER + RELIGHT + PHOTO FINISH)
-Keep the room and its furniture: the same sofa, beds, tables, cabinets, built-ins, rugs and large pieces, in the same places, with the same materials and colours. Do not restyle, re-furnish or redecorate.
-Remove what a professional stager would clear before a listing shoot: clutter on counters, tables, floors and shelves; personal items and photographs; toys, laundry, shoes, bags, boxes, bins, cords and cables; papers, magnets and notes; toiletries and cleaning products; pet bowls and beds. Fill each cleared area with the surface that was naturally behind it.
-Tidy what stays: straighten cushions, throws and rugs, make beds neatly, close cabinet doors and drawers, align chairs. Clean surfaces of marks and smudges; repair small scuffs on walls and floors.
-Then correct exposure and white balance, relight as specified below, and give it a professional editorial photo finish.`
+// "Make it professional" — for brokers shooting on a phone. A separate prompt from
+// the restyle modes: the model acts as a top real-estate photographer and retoucher,
+// keeps the room, its furniture and its view, and fixes everything a snapshot gets
+// wrong (tilt, converging verticals, exposure, colour casts, blur, clutter, light).
+const PRO_ROLE = `PROFESSIONAL REAL ESTATE PHOTOGRAPH FROM A SNAPSHOT.
+The attached image is a quick, imperfect photo of a real home taken on a phone by a busy agent: it may be tilted, shot from a slightly wrong height, dark or blown out, colour-cast by mixed light, noisy, soft or blurred, with windows burned out and clutter in view.
+Produce the photograph a high-end architectural real estate photographer would have delivered of THIS SAME SPACE from THIS SAME SPOT — the image that would run on a luxury brokerage's listing — after a full professional shoot and retouch.
+First, identify silently what the photograph shows: an interior room (which room type), an exterior (front, rear, side, yard, pool), or a detail. Then list to yourself every wall, window, door, built-in and piece of furniture, and where it sits.`
+
+const PRO_KEEP = `KEEP — THIS IS THE SAME HOME, NOT A REDESIGN
+- Same room, same size, same walls, ceiling, floor, windows, doors, openings, built-ins, fixtures and finishes, with the same materials and colours.
+- Same furniture and decor pieces that belong in the room, in the same places. Do NOT restyle, re-furnish, re-paint, re-floor, add furniture or add decor. No virtual staging.
+- Same view through every window and beyond the property: same trees, buildings, terrain and horizon.
+- Same viewpoint: the photographer stands where the phone was. Do not move into another room or reveal space that is not in the photo.`
+
+const PRO_FIX = `FIX — WHAT THE PROFESSIONAL DOES
+1. CAMERA AND COMPOSITION
+- Level the horizon and correct the tilt. Make every vertical line truly vertical (two-point perspective, as with a tilt-shift lens): door frames, wall corners, window frames and cabinets straight up and down, no converging or leaning verticals.
+- Remove phone-lens distortion (bowed lines at the edges). Camera at a natural chest height (about 1.2–1.5 m) looking level.
+- Only the small reframe these corrections need is allowed; keep the same subject, the same spot and the same aspect ratio. Never zoom out to invent unseen space.
+2. LIGHT AND EXPOSURE (flambient / HDR blend, done well)
+- Bright, airy, evenly lit room with natural depth: no dark corners, no blown highlights, no flash hotspots, no harsh flash shadows.
+- Window pull: windows correctly exposed so the real view outside is clearly visible, never a white blown-out glow, never a fake view.
+- Interior lights switched on and glowing softly. Neutral, clean whites on walls and ceilings; remove orange tungsten, green fluorescent and blue daylight casts; true-to-life material colours.
+3. CLARITY
+- Tack sharp throughout, as from a full-frame camera on a tripod at f/8, ISO 100: remove motion blur, softness, noise and grain; fine real texture in wood, stone, fabric and metal.
+- Remove lens flare, glare, smudges and dust; remove reflections of the photographer or phone in mirrors, glass and appliances.
+4. PRE-SHOOT TIDY (what the photographer would ask the agent to do)
+- Remove clutter: items on counters, tables, floors and shelves; personal photos, papers, fridge magnets, toiletries, cleaning products, cords and cables, trash and bins, toys, shoes, laundry, pet bowls and beds, cars in the driveway.
+- Tidy what stays: beds made with crisp linens, pillows plumped, cushions and throws straightened, rugs straight, chairs aligned, blinds and curtains evenly open, cabinet doors and drawers closed, toilet lid down, towels folded, TV and screens off and black, ceiling fans still.
+- Fill every cleared area with the real surface behind it. Small scuffs, stains and marks on walls and floors cleaned.
+5. EXTERIORS
+- If the sky is grey, white or blown out, replace it with a natural clear blue sky with a few soft clouds; keep the horizon, trees and buildings exactly. Lawns tidy and evenly green, hoses and bins removed; landscaping itself unchanged.`
+
+const PRO_LIGHT = {
+  daylight: `LIGHT — BRIGHT, AIRY DAYLIGHT (THE LISTING STANDARD)
+- Soft, bright late-morning daylight from the existing windows, balanced with warm 2700–3000K interior lights on at low level. Exteriors: soft directional sun from the real sun side, gentle shadows.`,
+  golden: LIGHT.golden,
+  twilight: LIGHT.twilight,
+  original: `LIGHT — THE PHOTO'S OWN TIME OF DAY
+- Keep the time of day and the direction of the light, but expose and balance it as a professional would: bright, even and clean.`,
+}
+
+const PRO_NEGATIVES = `ABSOLUTE CONSTRAINTS
+NO text, NO labels, NO watermark, NO logo, NO people, NO pets.
+NO new furniture, NO new decor, NO new finishes, NO restyling, NO virtual staging.
+NO change to the room's size, walls, ceiling, windows, doors or the content of any view; NO invented views or rooms.
+NOT a 3D render, NOT a painting, NOT over-processed HDR: no halos, no glowing edges, no oversaturation, no cartoon colours.
+Return exactly one image: this same space, as a professional real estate photographer would have captured it.`
+
+// Second try when a professional-photo take changed the room instead of the camera.
+export const PRO_RETRY_PREFIX = `SECOND ATTEMPT. The previous attempt changed the room itself (walls, windows, furniture or the view moved, appeared or disappeared) or reframed it too far. Keep the same room and the same contents from the same spot; only straighten the camera, fix light and exposure, sharpen, and tidy clutter.
+
+`
 
 // Prefixed to a second attempt when the automatic overlay check fails.
 export const RETRY_PREFIX = `SECOND ATTEMPT. The previous attempt changed the camera (it zoomed, re-centred or moved walls and openings). That is a failure. This time keep the frame EXACTLY: every wall edge, the ceiling line, the floor line and every window and door must sit on the same pixels as in the attached photograph. Change surfaces, furniture and light only.
@@ -95,7 +144,8 @@ export function buildRenderPrompt({ mode = 'redesign', style = 'signature', ligh
   const lightBlock = LIGHT[light] || LIGHT.daylight
   const extra = note ? `\nADDITIONAL DIRECTION FROM THE OWNER (apply within every lock above): ${note.slice(0, 600)}\n` : ''
   if (mode === 'cleanup') {
-    return [SHOT, LOCKS, CLEANUP, lightBlock, FINISH, extra, NEGATIVES, 'REMINDER: STRUCTURE, OPENINGS, CAMERA, VIEW AND THE MAIN FURNITURE ARE EXACT. ONLY CLUTTER, LIGHT AND FINISH CHANGE.'].join('\n\n')
+    const proExtra = note ? `\nADDITIONAL DIRECTION FROM THE AGENT (within everything above): ${note.slice(0, 600)}\n` : ''
+    return [PRO_ROLE, PRO_KEEP, PRO_FIX, PRO_LIGHT[light] || PRO_LIGHT.daylight, proExtra, PRO_NEGATIVES, 'REMINDER: SAME HOME, SAME ROOM, SAME FURNITURE, SAME VIEW — SHOT AND RETOUCHED LIKE A HIGH-END LISTING PHOTOGRAPH.'].join('\n\n')
   }
   if (mode === 'polish') {
     return [SHOT, LOCKS, POLISH, lightBlock, FINISH, extra, NEGATIVES, 'REMINDER: STRUCTURE, OPENINGS, CAMERA AND VIEW ARE EXACT.'].join('\n\n')

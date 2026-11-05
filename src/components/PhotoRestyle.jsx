@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { Modal } from './Chrome.jsx'
 
-const MODES = ['cleanup', 'redesign', 'polish']
+const MODES = ['cleanup', 'redesign', 'polish'] // professional photo first: the reason most people upload
 
 // Pop-up offered after an upload (and from any photo): clean up, restyle or relight
 // just these photos, without touching the rest of the house.
