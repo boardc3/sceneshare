@@ -70,5 +70,5 @@ export default route(
     send(res, 200, { ok: true, id, url, sent })
   },
   // Sending shares is limited tightly; the owner's own stats reads are not the same thing.
-  { name: 'shares', limit: { POST: { hour: 60, day: 300 }, GET: { hour: 1200, day: 6000 } } },
+  { name: 'shares', limit: { POST: { hour: 200, day: 1000 }, GET: { hour: 1200, day: 6000 } } },
 )

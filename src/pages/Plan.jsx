@@ -4,6 +4,7 @@ import { track } from '../lib/analytics.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
 import { buyCredits, buyExtra, changePlan, loadBilling, manageBilling, periodShare, planPrice, setCancel, subscribe, useBilling } from '../lib/billing.js'
 import { Link, useRouter } from '../router.jsx'
+import { shown } from '../lib/api.js'
 
 const money = (cents, lang) => new Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100)
 const day = (iso, lang) => new Date(iso).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -95,7 +96,7 @@ export default function Plan() {
       if (r?.redirecting) return // off to Stripe
       if (done) setMsg({ ok: true, text: done(r) })
     } catch (e) {
-      setMsg({ ok: false, text: e.message || t('err.generic') })
+      setMsg({ ok: false, text: shown(e) || t('err.generic') })
     }
     setBusy(null)
   }

@@ -9,7 +9,7 @@ import SidePicker from '../components/SidePicker.jsx'
 import { creditText, useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { focusSection } from '../lib/engagement.js'
-import { get, post } from '../lib/api.js'
+import { get, post, shown } from '../lib/api.js'
 import { ensureTerms, useAuth } from '../lib/auth.js'
 import { isEmail } from '../lib/format.js'
 import { defaultSides, designName, sideImage, shortSideLabel } from '../lib/designs.js'
@@ -43,7 +43,7 @@ export default function Share({ id }) {
         setOwner(d.owner)
         setSides(defaultSides(d.property))
       })
-      .catch((e) => setError(e.status === 404 ? t('share.gone') : e.message || t('err.generic')))
+      .catch((e) => (shown(e), setError(e.status === 404 ? t('share.gone') : e.message || t('err.generic'))))
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

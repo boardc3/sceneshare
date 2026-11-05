@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { get } from '../lib/api.js'
+import { get, shown } from '../lib/api.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
 import { Link } from '../router.jsx'
 
@@ -42,7 +42,7 @@ export default function Admin() {
   const load = () =>
     get('/api/admin')
       .then((d) => setData(d))
-      .catch((e) => setError(e.message || 'Could not load.'))
+      .catch((e) => setError(shown(e) || 'Could not load.'))
   useEffect(() => {
     if (ready && admin) load()
   }, [ready, admin])

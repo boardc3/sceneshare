@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { post } from '../lib/api.js'
+import { post, shown } from '../lib/api.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
 import { Link, useRouter } from '../router.jsx'
 
@@ -24,7 +24,7 @@ export default function Own() {
         track('own_start', null, { propertyId: d.id })
         navigate(`/studio/${d.id}`, { replace: true })
       } catch (e) {
-        setError(e.message || t('err.generic'))
+        setError(shown(e) || t('err.generic'))
       }
     })()
   }, [ready, lang, navigate, t])

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { get, post } from '../lib/api.js'
+import { get, post, shown } from '../lib/api.js'
 import { refresh, requireSignIn, sendVerifyCode, signOut, useAuth, verifyEmail } from '../lib/auth.js'
 import ShareBar from '../components/ShareBar.jsx'
 import ShareStats from '../components/ShareStats.jsx'
@@ -26,7 +26,7 @@ export default function Account() {
       const d = await get('/api/properties?mine=1')
       setHomes(d.properties)
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
     }
   }, [t])
 
@@ -63,7 +63,7 @@ export default function Account() {
       track('property_delete', null, { propertyId: h.id })
       setHomes((list) => list.filter((x) => x.id !== h.id))
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
     }
   }
 
@@ -75,7 +75,7 @@ export default function Account() {
       setHomes((list) => list.map((x) => (x.id === h.id ? { ...x, nickname: name.trim() || null } : x)))
       track('property_rename', null, { propertyId: h.id })
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
     }
   }
 
@@ -112,7 +112,7 @@ export default function Account() {
       navigate('/')
       window.alert(t('account.deleted'))
     } catch (err) {
-      setError(err.message || t('err.generic'))
+      setError(shown(err) || t('err.generic'))
       setDeleting(false)
     }
   }

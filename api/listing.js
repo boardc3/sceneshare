@@ -137,10 +137,20 @@ export default route(
     }
 
     const listing = { zillow: z.url || null, redfin: r.url || null, homes: hm.url || null, used: pick?.source || null, factsFrom }
+    // What happened on each site, for the studio to explain an empty result:
+    // found (n photos) · no_photos (page loaded, nothing of this home) · not_found
+    // (no page for this address) · blocked (the page wouldn't load) · skipped.
+    const sources = Object.fromEntries(
+      SOURCES.map((k) => {
+        const x = results[k]
+        const state = x.reason === 'not_asked' ? 'skipped' : x.photos?.length ? 'found' : x.ok ? 'no_photos' : /^not_on_/.test(x.reason || '') ? 'not_found' : 'blocked'
+        return [k, { state, n: x.photos?.length || 0 }]
+      }),
+    )
     // A pasted link that found nothing changes nothing.
     if (link && !photos.length) {
       res._meta = { propertyId, photos: 0, used: null, link: link.source }
-      return send(res, 200, { ok: true, found: false, reason: 'no_photos', link: link.source })
+      return send(res, 200, { ok: true, found: false, reason: sources[link.source].state, link: link.source, sources })
     }
     await insertPhotoRows(propertyId, photos, user)
     // A pasted link adds to what's known: earlier facts stay, gaps are filled, and the
@@ -176,6 +186,7 @@ export default route(
       reason: photos.length ? null : z.reason === 'not_on_zillow' && r.reason === 'not_on_redfin' && hm.reason === 'not_on_homes' ? 'not_listed' : 'no_photos',
       facts: finalFacts,
       listing: finalListing,
+      sources,
       property: saved,
     })
   },

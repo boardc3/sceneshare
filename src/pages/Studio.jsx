@@ -12,7 +12,7 @@ import ShareStats from '../components/ShareStats.jsx'
 import SidePicker from '../components/SidePicker.jsx'
 import { creditText, useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { get, health, post, recalledProperty, retriable, shrinkPhoto, sleep } from '../lib/api.js'
+import { get, health, post, recalledProperty, retriable, shown, shrinkPhoto, sleep } from '../lib/api.js'
 import { ensureTerms, requireSignIn, useAuth } from '../lib/auth.js'
 import { defaultSides, designLabel, designName, sideImage, shortSideLabel } from '../lib/designs.js'
 import { lotSqft } from '../lib/format.js'
@@ -33,6 +33,7 @@ async function withRetry(fn, tries = 3) {
       return await fn()
     } catch (e) {
       if (i >= tries || !retriable(e)) throw e
+      e.handled = true // retrying: only the final failure is announced
       await sleep(3000 * i)
     }
   }
@@ -78,6 +79,8 @@ export default function Studio({ id }) {
   const [shared, setShared] = useState(0)
   const [prPhotos, setPrPhotos] = useState(null) // the clean-up / restyle pop-up, for these photos
   const [prBusy, setPrBusy] = useState(false)
+  const [listingSources, setListingSources] = useState(null) // per-site result of the last search
+  const [listingError, setListingError] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
   const [linkMsg, setLinkMsg] = useState(null) // { busy } | { ok, text }
   const [reviewing, setReviewing] = useState(null) // { designId, startAt } while the review pass is open
@@ -98,7 +101,7 @@ export default function Studio({ id }) {
       }
     } catch (e) {
       setStatus(e.status === 404 || e.code === 'bad_id' ? 'missing' : 'error')
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
     }
   }, [id, user, t])
 
@@ -134,10 +137,12 @@ export default function Studio({ id }) {
         else setProperty((p) => ({ ...p, listingChecked: true }))
         const n = d.property?.photos?.filter((p) => ['zillow', 'redfin', 'homes'].includes(p.source)).length || 0
         setListing(d.found ? 'found' : d.reason === 'scraper_not_configured' ? 'off' : 'none')
+        setListingSources(d.found ? null : d.sources || null)
         track('listing_lookup', { found: d.found, used: d.listing?.used || null, photos: n }, { propertyId: id })
       })
       .catch((e) => {
         setListing('error')
+        setListingError(`${shown(e) || ''} (${e.status || '—'} · ${e.code})`)
         track('listing_lookup_failed', { code: e.code }, { propertyId: id })
       })
   }, [status, property, listing, id, lang])
@@ -171,7 +176,7 @@ export default function Studio({ id }) {
       setNote('')
       go(d.design, visible.map((p) => p.id), { label: designLabel(d.design, next.designs.length - 1, t) })
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
     } finally {
       setStarting(false)
     }
@@ -205,7 +210,7 @@ export default function Studio({ id }) {
       track('photo_restyle_start', { mode: m, style: s, light: l, photos: ids.length }, { propertyId: id })
       go(d.design, ids, { label: designLabel(d.design, next.designs.length - 1, t) })
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
       if (e.code === 'plan_limit') setPrPhotos(null)
     } finally {
       setPrBusy(false)
@@ -220,7 +225,7 @@ export default function Studio({ id }) {
       if (event) track(event, body, { propertyId: id })
       return d
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
       return null
     }
   }
@@ -296,7 +301,7 @@ export default function Studio({ id }) {
       if (kind === 'feedback') setFeedback('')
       track(kind === 'feedback' ? 'change_request' : 'photo_redo', { designId: right.id, ms: d.version.ms }, { propertyId: id })
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
       track(kind === 'feedback' ? 'change_request_failed' : 'photo_redo_failed', { code: e.code }, { propertyId: id })
     } finally {
       setBusy((b) => {
@@ -322,7 +327,7 @@ export default function Studio({ id }) {
         track('photo_upload', null, { propertyId: id })
       }
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
     } finally {
       setUploading(false)
       // Offer to clean up or restyle just the new photos.
@@ -344,14 +349,15 @@ export default function Studio({ id }) {
       const d = await post('/api/listing', { propertyId: id, url, lang })
       if (d.property) setProperty(normalizeProperty(d.property))
       const n = d.property?.photos?.filter((p) => ['zillow', 'redfin', 'homes'].includes(p.source)).length || 0
-      setLinkMsg(d.found ? { ok: true, text: t('link.done', { n, src: SOURCE_NAMES[d.listing?.used] || '' }) } : { ok: false, text: t('link.none') })
+      const why = d.reason === 'blocked' ? t('link.blocked', { src: SOURCE_NAMES[d.link] || '' }) : t('link.none')
+      setLinkMsg(d.found ? { ok: true, text: t('link.done', { n, src: SOURCE_NAMES[d.listing?.used] || '' }) } : { ok: false, text: why })
       if (d.found) {
         setLinkUrl('')
         setListing('found')
       }
       track('listing_link', { found: d.found, source: d.listing?.used || d.link || null, photos: n }, { propertyId: id })
     } catch (err) {
-      setLinkMsg({ ok: false, text: err.message || t('err.generic') })
+      setLinkMsg({ ok: false, text: `${shown(err) || t('err.generic')} (${err.status || '—'} · ${err.code})` })
       track('listing_link_failed', { code: err.code }, { propertyId: id })
     }
   }
@@ -365,7 +371,7 @@ export default function Studio({ id }) {
       setListing('idle')
       await load()
     } catch (e) {
-      setError(e.message || t('err.generic'))
+      setError(shown(e) || t('err.generic'))
     } finally {
       setLocating(false)
     }
@@ -602,7 +608,18 @@ export default function Studio({ id }) {
           {listingMsg && (
             <p className={`rail__status rail__status--${listing}`} role="status">
               {listing === 'looking' && <span className="spinner spinner--small" aria-hidden="true" />} {listingMsg}
+              {listing === 'error' && listingError && <span className="rail__why"> {listingError}</span>}
             </p>
+          )}
+          {listing === 'none' && listingSources && (
+            <ul className="rail__sources">
+              {Object.entries(listingSources).map(([k, v]) => (
+                <li key={k} className={`rail__src rail__src--${v.state}`}>
+                  <strong>{SOURCE_NAMES[k]}</strong> {t(`listing.s.${v.state}`)}
+                </li>
+              ))}
+              <li className="rail__srchint">{t('listing.pasteHint')}</li>
+            </ul>
           )}
           <div className="rail__add">
             <label className="btn btn--ink btn--small">

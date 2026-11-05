@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import PasswordInput from '../components/PasswordInput.jsx'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { post } from '../lib/api.js'
+import { post, shown } from '../lib/api.js'
 import { changePassword, refresh, requireSignIn, savePrefs, sendVerifyCode, signOut, signOutOthers, updateName, useAuth, verifyEmail } from '../lib/auth.js'
 import { Link, useRouter } from '../router.jsx'
 
@@ -88,7 +88,7 @@ export default function Settings() {
       navigate('/')
       window.alert(t('account.deleted'))
     } catch (err) {
-      note('delete', err.message || t('err.generic'), false)
+      note('delete', shown(err) || t('err.generic'), false)
       setDeleting(false)
     }
   }

@@ -10,7 +10,24 @@ export class ApiError extends Error {
   }
 }
 
-async function handle(r) {
+// Errors the page doesn't explain itself are announced (components/ApiErrors.jsx):
+// a caller that shows the error inline marks it with shown(e) and no notice appears.
+// Flows that have their own prompt (plans, terms, sign-in) never announce.
+const OWN_PROMPT = new Set(['plan_limit', 'terms_required', 'sign_in_required'])
+function announce(err) {
+  if (OWN_PROMPT.has(err.code)) return
+  setTimeout(() => {
+    if (err.handled) return
+    window.dispatchEvent(new CustomEvent('ss:api-error', { detail: { code: err.code, status: err.status, message: err.message, path: err.path, method: err.method, requestId: err.requestId, at: new Date().toISOString() } }))
+  }, 0)
+}
+export const shown = (e) => {
+  if (e && typeof e === 'object') e.handled = true
+  return e?.message || ''
+}
+export const quietly = (e) => (shown(e), e)
+
+async function handle(r, meta = {}) {
   let data = null
   try {
     data = await r.json()
@@ -20,6 +37,8 @@ async function handle(r) {
   if (!r.ok || !data?.ok) {
     const err = new ApiError(data?.error || 'http_' + r.status, data?.message || '', r.status)
     err.data = data
+    Object.assign(err, meta, { requestId: r.headers.get('x-vercel-id') || null })
+    announce(err)
     // A plan limit anywhere opens the upgrade prompt (components/Chrome.jsx).
     if (err.code === 'plan_limit') window.dispatchEvent(new CustomEvent('ss:plan-limit', { detail: { limit: data.limit, max: data.max, plan: data.plan, message: data.message } }))
     if (err.code === 'terms_required') window.dispatchEvent(new CustomEvent('ss:terms-required'))
@@ -38,12 +57,15 @@ let recovering = null
 async function send(path, init) {
   const once = async () => {
     let r
+    const meta = { path: path.split('?')[0], method: init.method || 'GET' }
     try {
       r = await fetch(path, { credentials: 'same-origin', ...init, headers: { ...(init.headers || {}), ...analyticsHeaders() } })
     } catch {
-      throw new ApiError('network', '', 0)
+      const err = Object.assign(new ApiError('network', '', 0), meta)
+      announce(err)
+      throw err
     }
-    return handle(r)
+    return handle(r, meta)
   }
   try {
     return await once()
@@ -65,7 +87,7 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 let healthCache = null
 export function health() {
-  if (!healthCache) healthCache = get('/api/health').catch(() => ({ features: {} }))
+  if (!healthCache) healthCache = get('/api/health').catch((e) => (shown(e), { features: {} }))
   return healthCache
 }
 

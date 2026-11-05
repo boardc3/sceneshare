@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { post } from '../lib/api.js'
+import { post, shown } from '../lib/api.js'
 import { useAuth } from '../lib/auth.js'
 import { isEmail } from '../lib/format.js'
 import { LEGAL } from '../legal/entity.js'
@@ -33,7 +33,7 @@ export default function PrivacyRequest() {
       setDone(d.id)
       track('privacy_request', { kind })
     } catch (err) {
-      setError(err.message || t('err.generic'))
+      setError(shown(err) || t('err.generic'))
     } finally {
       setBusy(false)
     }

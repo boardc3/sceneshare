@@ -6,7 +6,7 @@ import Pricing from '../components/Pricing.jsx'
 import Story from '../components/Story.jsx'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { post, rememberProperty } from '../lib/api.js'
+import { post, rememberProperty, shown } from '../lib/api.js'
 import { requireSignIn, takeIntent, useAuth } from '../lib/auth.js'
 import { Link, useRouter } from '../router.jsx'
 import { DEMO } from '../demoMedia.js'
@@ -38,7 +38,7 @@ export default function Landing() {
         setTimeout(() => navigate(`/studio/${d.property.id}`), reduce ? 200 : 2300)
       } catch (e) {
         track('address_search_failed', { code: e.code })
-        setError(e.message || (e.code === 'network' ? t('err.network') : t('err.generic')))
+        setError(shown(e) || (e.code === 'network' ? t('err.network') : t('err.generic')))
         setBusy(false)
       }
     },

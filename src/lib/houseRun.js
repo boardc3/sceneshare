@@ -48,6 +48,7 @@ export function useHouseRun({ propertyId, lang, onRendered, onFinished }) {
           patchItem(photoId, { state: 'done', version: d.version, ms: Date.now() - t0 })
           return { state: 'done', ms: Date.now() - t0 }
         } catch (e) {
+          e.handled = true // shown per photo in the progress dialog
           if (FATAL.has(e.code) || e.status === 401 || e.status === 403) return { state: 'fatal', error: e }
           if (e.code === 'render_blocked' || e.code === 'photo_missing' || !retriable(e) || attempt === 4) {
             track('render_photo_failed', { designId, code: e.code, attempt }, { propertyId })

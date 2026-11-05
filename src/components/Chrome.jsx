@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { consent, gpc, onConsent, setConsent, track } from '../lib/analytics.js'
 import { acceptTerms, currentUser, onAuthRequest, onTermsRequest, requestReset, signInEmail, signInGoogle, signOut, signUpEmail, useAuth } from '../lib/auth.js'
-import { post } from '../lib/api.js'
+import { post, shown } from '../lib/api.js'
 import { loadBilling } from '../lib/billing.js'
 import { isEmail } from '../lib/format.js'
 import { Link, useRouter } from '../router.jsx'
@@ -502,7 +502,7 @@ export function EmailPrompt({ propertyId, address }) {
       setDone(true)
       track('email_prompt_submitted', null, { propertyId })
     } catch (err) {
-      setError(err.message || t('err.generic'))
+      setError(shown(err) || t('err.generic'))
     }
   }
   return (

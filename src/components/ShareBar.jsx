@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { translate, useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { post } from '../lib/api.js'
+import { post, shown } from '../lib/api.js'
 import { ensureTerms, useAuth } from '../lib/auth.js'
 import { isEmail } from '../lib/format.js'
 import { Modal } from './Chrome.jsx'
@@ -148,7 +148,7 @@ function EmailShare({ id, address, owner, lang, defaultName, linkFor, onClose, o
         setDone('mailapp')
       }
     } catch (err) {
-      setError(err.message || t('err.generic'))
+      setError(shown(err) || t('err.generic'))
     } finally {
       setBusy(false)
     }
