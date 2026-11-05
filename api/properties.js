@@ -7,6 +7,7 @@ import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
 import { ApiError, query, readJson, route, send } from './_lib/http.js'
 import { background, visitorId } from './_lib/log.js'
 import { LIGHT_KEYS, STYLE_KEYS } from './_lib/prompts.js'
+import { nearby, POI_VERSION } from './_lib/mapbox.js'
 
 // GET  ?id=…        a home: the full studio copy for its owner, the buyer view for everyone else
 // GET  ?mine=1      the signed-in account's homes ("My homes")
@@ -42,6 +43,15 @@ async function read(req, res) {
     return send(res, 200, { ok: true, owner: false, gated: true, sharer: { name: row.owner_name || (email ? email.split('@')[0] : null), email } })
   }
   const p = { ...normalizeProperty(row.data), updatedAt: row.updated_at, shareViews: row.share_views }
+  // Homes saved before the richer, classified places get them on first view.
+  if (p.address?.lat && (p.poisV || 1) < POI_VERSION && config.mapboxToken) {
+    const fresh = await nearby(p.address.lat, p.address.lng, q.lang === 'zh' ? 'zh' : 'en').catch(() => null)
+    if (fresh?.length) {
+      p.pois = fresh
+      p.poisV = POI_VERSION
+      background(mutateProperty(p.id, (cur) => ({ ...cur, pois: fresh, poisV: POI_VERSION })).catch(() => null))
+    }
+  }
   if (!owner && q.view === '1') {
     const shareId = /^[a-z0-9]{10}$/.test(q.s || '') ? q.s : null
     background(recordView(q.id, { lang: q.lang === 'zh' ? 'zh' : 'en', req, visitorId: visitorId(req), shareId }))

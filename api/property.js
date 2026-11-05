@@ -1,7 +1,7 @@
 import { assertCanAddHome } from './_lib/billing.js'
 import { createOwnProperty, logSubmission, upsertProperty } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
-import { geocode, nearby, withUnit } from './_lib/mapbox.js'
+import { geocode, nearby, POI_VERSION, withUnit } from './_lib/mapbox.js'
 import { ApiError, readJson, route, send } from './_lib/http.js'
 import { parcelFor } from './_lib/parcel.js'
 
@@ -41,7 +41,7 @@ export default route(
 
     const id = existing || newId()
     const [parcel, pois] = await Promise.all([parcelFor(addr), nearby(addr.lat, addr.lng, lang)])
-    const property = { id, createdAt: new Date().toISOString(), address: addr, parcel, pois, photos: [], facts: null, listing: null, designs: [] }
+    const property = { id, createdAt: new Date().toISOString(), address: addr, parcel, pois, poisV: POI_VERSION, photos: [], facts: null, listing: null, designs: [] }
     const saved = await upsertProperty(property, { user, origin: existing ? 'own' : 'address', lang })
     if (!saved.ok) throw new ApiError(403, 'not_owner', 'Only the account that saved this home can change it.')
     await logSubmission({ user, kind: 'address_search', address: addr.formatted, propertyId: id, lang, meta: { county: addr.county, parcel: Boolean(parcel), pois: pois.length } })

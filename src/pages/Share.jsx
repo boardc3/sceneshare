@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { EmailPrompt } from '../components/Chrome.jsx'
+import { EmailPrompt, Modal } from '../components/Chrome.jsx'
 import Compare from '../components/Compare.jsx'
 import Facts from '../components/Facts.jsx'
+import PropertyDetails from '../components/PropertyDetails.jsx'
 import PropertyMap from '../components/PropertyMap.jsx'
 import ShareBar from '../components/ShareBar.jsx'
 import SidePicker from '../components/SidePicker.jsx'
@@ -23,6 +24,7 @@ export default function Share({ id }) {
   const [owner, setOwner] = useState(false)
   const [error, setError] = useState('')
   const [sides, setSides] = useState({ left: 'original', right: null })
+  const [openRoom, setOpenRoom] = useState(null)
   const [gated, setGated] = useState(null) // { name, email } while the owner hasn't accepted the Terms
   const { terms } = useAuth()
 
@@ -132,35 +134,37 @@ export default function Share({ id }) {
       )}
 
       <section className="rooms" aria-label={t('share.rooms')}>
-        {property.photos.map((p) => {
-          const L = sideImage(property, sides.left, p)
-          const R = sides.right ? sideImage(property, sides.right, p) : null
-          const altered = (side, img) => img && !img.original && side !== 'original'
-          const label = (side, img) => `${shortSideLabel(property, side, t)}${altered(side, img) ? ` · ${t('share.altered')}` : ''}`
-          const before = L || { src: p.src, original: true }
-          const leftSide = L ? sides.left : 'original'
-          return (
-            <article key={p.id} className="room">
-              <Compare
-                key={`${before.src}-${R?.src}`}
-                before={before.src}
-                after={R?.src}
-                width={p.width}
-                height={p.height}
-                beforeLabel={label(leftSide, before)}
-                afterLabel={R ? label(sides.right, R) : ''}
-                alt={a?.formatted || ''}
-              />
-              <p className="room__credit">
-                {creditText(p, t)}
-                {sides.right && !R && <> · {t('share.notInDesign')}</>}
-              </p>
-            </article>
-          )
-        })}
+        <ul className="roomgrid">
+          {property.photos.map((p, i) => {
+            const L = sideImage(property, sides.left, p)
+            const R = sides.right ? sideImage(property, sides.right, p) : null
+            const shown = R || L || { src: p.src, original: true }
+            const altered = Boolean(R) || (L && !L.original)
+            return (
+              <li key={p.id}>
+                <button type="button" className="roomcard" onClick={() => (setOpenRoom(i), track('room_open', { index: i }, { propertyId: id }))} aria-label={t('share.openRoom', { n: i + 1 })}>
+                  <img src={shown.src} alt="" loading="lazy" width={p.width || undefined} height={p.height || undefined} />
+                  <span className={`roomcard__tag ${altered ? 'roomcard__tag--alt' : ''}`}>{altered ? `${shortSideLabel(property, R ? sides.right : sides.left, t)} · ${t('share.altered')}` : t('studio.current')}</span>
+                  {R && <span className="roomcard__cmp">{t('share.compare')}</span>}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
       </section>
+      {openRoom !== null && (
+        <RoomViewer
+          property={property}
+          sides={sides}
+          index={openRoom}
+          onIndex={setOpenRoom}
+          onClose={() => setOpenRoom(null)}
+          alt={a?.formatted || ''}
+        />
+      )}
       {designs.length > 0 && <p className="share__note">{t('share.proposalNote')}</p>}
 
+      <PropertyDetails property={property} />
       {a && <PropertyMap address={a} parcel={property.parcel} pois={property.pois || []} lotSqft={lotSqft(property.facts)} />}
 
       <section className="share__end">
@@ -223,5 +227,49 @@ function Gated({ id, sharer }) {
       )}
       <p className="fine">{t('terms.gate.note')}</p>
     </main>
+  )
+}
+
+// One room large: before/after for the chosen designs, previous / next, arrow keys.
+function RoomViewer({ property, sides, index, onIndex, onClose, alt }) {
+  const { t } = useI18n()
+  const photos = property.photos
+  const p = photos[index]
+  const n = photos.length
+  useEffect(() => {
+    const on = (e) => {
+      if (e.target?.closest?.('.compare__handle')) return
+      if (e.key === 'ArrowRight') onIndex((index + 1) % n)
+      if (e.key === 'ArrowLeft') onIndex((index - 1 + n) % n)
+    }
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [index, n, onIndex])
+  if (!p) return null
+  const L = sideImage(property, sides.left, p)
+  const R = sides.right ? sideImage(property, sides.right, p) : null
+  const before = L || { src: p.src, original: true }
+  const leftSide = L ? sides.left : 'original'
+  const altered = (side, img) => img && !img.original && side !== 'original'
+  const label = (side, img) => `${shortSideLabel(property, side, t)}${altered(side, img) ? ` · ${t('share.altered')}` : ''}`
+  return (
+    <Modal labelledBy="room-h" onClose={onClose} wide>
+      <div className="roomview">
+        <h2 id="room-h" className="sr-only">{t('share.roomN', { n: index + 1, total: n })}</h2>
+        <Compare key={`${before.src}-${R?.src}`} before={before.src} after={R?.src} width={p.width} height={p.height} beforeLabel={label(leftSide, before)} afterLabel={R ? label(sides.right, R) : ''} alt={alt} />
+        <div className="roomview__bar">
+          <button type="button" className="btn btn--quiet btn--small" onClick={() => onIndex((index - 1 + n) % n)} aria-label={t('share.prev')}>
+            ←
+          </button>
+          <span className="roomview__count">
+            {index + 1} / {n} · {creditText(p, t)}
+          </span>
+          <button type="button" className="btn btn--quiet btn--small" onClick={() => onIndex((index + 1) % n)} aria-label={t('share.next')}>
+            →
+          </button>
+        </div>
+        {sides.right && !R && <p className="fine">{t('share.notInDesign')}</p>}
+      </div>
+    </Modal>
   )
 }

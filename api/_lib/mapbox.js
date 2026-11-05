@@ -128,26 +128,32 @@ export function bearing(a, b) {
 // `accept` / `reject` run against the place's name and Mapbox's own category labels,
 // so a music studio is not "the nearest school" and a hospice is not "the hospital"
 // (both happened on the first live run, 2026-11-04).
+// v2 (Chris, 2026-11-04: "more, and classifications closer to the markdown"): each
+// category belongs to a group a buyer thinks in — schools, outdoors, everyday,
+// health, travel — and schools are split by level. 12 places at most (doc 07: 3–8
+// is right, 12 is the ceiling).
+const SCHOOL_NOT = /music|dance|driving|art|swim|surf|yoga|studio|tutor|language|pre-?school|day ?care|beauty|cooking|flight|martial|karate|montessori|learning center|college|university|children'?s house|kids|tutoring|kumon|mathnasium/i
+export const POI_VERSION = 2
 const POI_CATEGORIES = [
-  { key: 'beach', ids: ['beach'], radius: 8000 },
-  { key: 'park', ids: ['park'], radius: 3000, reject: /beach|parking|dog run/i },
-  {
-    key: 'school',
-    ids: ['elementary_school', 'school', 'high_school', 'education'],
-    radius: 5000,
-    accept: /school|elementary|middle|high|academy|charter|k-8|k-12/i,
-    reject: /music|dance|driving|art|swim|surf|yoga|studio|tutor|language|pre-?school|day ?care|beauty|cooking|flight|martial|karate|montessori|learning center|college|university/i,
-  },
-  { key: 'grocery', ids: ['grocery', 'supermarket'], radius: 5000, reject: /liquor|convenience|7-eleven|gas|smoke|vape/i },
-  { key: 'cafe', ids: ['coffee', 'cafe'], radius: 2500 },
+  { key: 'elementary', group: 'schools', ids: ['elementary_school', 'school', 'education'], radius: 4000, accept: /elementary|primary|k-8|k-6/i, reject: SCHOOL_NOT },
+  { key: 'middle', group: 'schools', ids: ['middle_school', 'school', 'education'], radius: 6000, accept: /middle|intermediate|junior high/i, reject: SCHOOL_NOT },
+  { key: 'high', group: 'schools', ids: ['high_school', 'school', 'education'], radius: 8000, accept: /high school|\bhigh\b|secondary|academy/i, reject: /junior high|middle|elementary|music|dance|driving|swim|surf|tutor|college|university/i },
+  { key: 'beach', group: 'outdoors', ids: ['beach'], radius: 8000 },
+  { key: 'park', group: 'outdoors', ids: ['park'], radius: 3000, reject: /beach|parking|dog run/i },
+  { key: 'grocery', group: 'everyday', ids: ['grocery', 'supermarket'], radius: 5000, reject: /liquor|convenience|7-eleven|gas|smoke|vape/i },
+  { key: 'cafe', group: 'everyday', ids: ['coffee', 'cafe'], radius: 2500 },
+  { key: 'dining', group: 'everyday', ids: ['restaurant'], radius: 3000, reject: /mcdonald|burger king|taco bell|jack in the box|subway|wendy|kfc|carl'?s|del taco|domino|pizza hut|little caesars/i },
+  { key: 'shopping', group: 'everyday', ids: ['shopping_mall', 'shopping_center', 'shopping'], radius: 10000, accept: /center|centre|mall|plaza|village|marketplace|promenade|spectrum|fashion|shops|town|square/i },
   {
     key: 'hospital',
+    group: 'health',
     ids: ['hospital', 'health_services'],
     radius: 25000,
     accept: /hospital|medical center/i,
     reject: /hospice|veterinar|animal|dental|clinic|urgent|rehab|behavioral|surgery center|imaging/i,
   },
-  { key: 'airport', ids: ['airport'], radius: 60000, accept: /airport|international/i, reject: /heli|airstrip|seaplane/i },
+  { key: 'airport', group: 'travel', ids: ['airport'], radius: 60000, accept: /airport|international/i, reject: /heli|airstrip|seaplane/i },
+  { key: 'train', group: 'travel', ids: ['train_station', 'railway_station'], radius: 15000, accept: /station|metrolink|amtrak|transportation center/i },
 ]
 
 const label = (p) => [p.name, ...(p.poi_category || []), ...(p.poi_category_ids || [])].filter(Boolean).join(' ')
@@ -182,6 +188,7 @@ async function nearestInCategory(cat, lat, lng, lang) {
     if (!best) continue // nothing suitable under this id → try the next one
     return {
       category: cat.key,
+      group: cat.group,
       name: best.p.name || '',
       address: best.p.full_address || best.p.place_formatted || '',
       lat: best.loc.lat,
@@ -195,6 +202,8 @@ async function nearestInCategory(cat, lat, lng, lang) {
 
 export async function nearby(lat, lng, lang = 'en') {
   if (!config.mapboxToken) return []
-  const out = await Promise.all(POI_CATEGORIES.map((c) => nearestInCategory(c, lat, lng, lang).catch(() => null)))
-  return out.filter(Boolean)
+  const out = (await Promise.all(POI_CATEGORIES.map((c) => nearestInCategory(c, lat, lng, lang).catch(() => null)))).filter(Boolean)
+  // One place never fills two school slots (a K-12 found as "elementary" and "high").
+  const seen = new Set()
+  return out.filter((p) => (seen.has(p.name) ? false : (seen.add(p.name), true)))
 }
