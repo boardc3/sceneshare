@@ -113,7 +113,13 @@ async function renderOne({ res, body, user, p, photo, design, base, feedback, ch
       at: new Date().toISOString(),
     }
 
-    const next = await mutateProperty(p.id, (cur) => (cur.designs.some((d) => d.id === design.id) ? addVersion(cur, photo.id, version) : false))
+    const next = await mutateProperty(p.id, (cur) => {
+      if (!cur.designs.some((d) => d.id === design.id)) return false
+      const out = addVersion(cur, photo.id, version)
+      // A change made from the review pass: the note becomes "applied", ready to re-check.
+      if (!feedback || body.review !== true) return out
+      return { ...out, designs: out.designs.map((d) => (d.id === design.id ? { ...d, review: { ...(d.review || {}), [photo.id]: { status: 'applied', note: feedback, versionId, at: version.at } } } : d)) }
+    })
     const saved = next?.designs.find((d) => d.id === design.id)
     if (!saved) throw new ApiError(409, 'design_missing', 'That design was removed while this photo was rendering.')
     await saveRender(version, { propertyId: p.id, photoId: photo.id, user, note: design.note || null, lang: body.lang })

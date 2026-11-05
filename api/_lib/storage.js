@@ -1,6 +1,6 @@
-import { put } from '@vercel/blob'
+import { del, put } from '@vercel/blob'
 import { config } from './config.js'
-import { putImage } from './db.js'
+import { deleteImages, putImage } from './db.js'
 import { fetchWithTimeout } from './http.js'
 import { scraperFetch } from './scraper.js'
 
@@ -81,6 +81,21 @@ export async function storeImage(buffer, { propertyId = 'loose', kind = 'image',
     return `/api/media?id=${id}`
   }
   return null
+}
+
+// Delete stored images for good (Blob files and database images), e.g. when the
+// owner discards a round of renders or deletes a home. Other URLs are ignored.
+export async function removeImages(urls = []) {
+  const blobs = []
+  const ids = []
+  for (const u of new Set(urls.filter(Boolean))) {
+    const m = /^\/api\/media\?id=([A-Za-z0-9_-]+)/.exec(u)
+    if (m) ids.push(m[1])
+    else if (/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//.test(u)) blobs.push(u)
+  }
+  if (blobs.length && config.blobToken) for (let i = 0; i < blobs.length; i += 100) await del(blobs.slice(i, i + 100), { token: config.blobToken })
+  if (ids.length) await deleteImages(ids)
+  return blobs.length + ids.length
 }
 
 export const canStoreImages = () => Boolean(config.blobToken || config.databaseUrl)

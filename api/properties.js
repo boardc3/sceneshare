@@ -2,12 +2,13 @@ import { addDesign, normalizeProperty, publicView, removeDesign, removePhoto, se
 import { sessionUser } from './_lib/auth.js'
 import { assertCanAddDesign } from './_lib/billing.js'
 import { config, TERMS_VERSION } from './_lib/config.js'
-import { deleteProperty, listProperties, logSubmission, mutateProperty, ownerAccepted, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
+import { deleteDesignRows, deleteProperty, listProperties, logSubmission, mutateProperty, ownerAccepted, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
 import { ApiError, query, readJson, route, send } from './_lib/http.js'
 import { background, visitorId } from './_lib/log.js'
 import { LIGHT_KEYS, STYLE_KEYS } from './_lib/prompts.js'
 import { nearby, POI_VERSION } from './_lib/mapbox.js'
+import { removeImages } from './_lib/storage.js'
 
 // GET  ?id=…        a home: the full studio copy for its owner, the buyer view for everyone else
 // GET  ?mine=1      the signed-in account's homes ("My homes")
@@ -60,7 +61,7 @@ async function read(req, res) {
   send(res, 200, { ok: true, owner, termsAccepted: accepted, property: owner && q.full === '1' ? p : publicView(p) })
 }
 
-const OPS = ['design.create', 'design.finish', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'photo.delete', 'property.rename', 'property.delete']
+const OPS = ['design.create', 'design.finish', 'design.review', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'photo.delete', 'property.rename', 'property.delete']
 
 async function write(req, res) {
   const body = await readJson(req)
@@ -74,7 +75,9 @@ async function write(req, res) {
   if (op === 'design.create') await assertCanAddDesign(user, id)
 
   if (op === 'property.delete') {
+    const doomed = normalizeProperty(row.data)
     await deleteProperty(id)
+    background(removeImages(doomed.photos.flatMap((ph) => [ph.source === 'owner' ? ph.src : null, ...ph.versions.map((v) => v.src)])).catch(() => {}))
     await logSubmission({ user, kind: 'property_delete', propertyId: id, lang })
     return send(res, 200, { ok: true, deleted: id })
   }
@@ -111,6 +114,18 @@ async function write(req, res) {
         design = out.designs.find((x) => x.id === d.id)
         return out
       }
+      // The owner's review pass: per photo "looks good" or a note to apply later.
+      // Private to the owner (publicView never includes it).
+      case 'design.review': {
+        if (!d) throw new ApiError(404, 'design_missing', 'That design was removed.')
+        const phId = String(body.photoId || '')
+        if (!p.photos.some((ph) => ph.id === phId)) throw new ApiError(404, 'photo_missing', 'That photo is no longer part of this home.')
+        const review = { ...(d.review || {}) }
+        const status = ['ok', 'change'].includes(body.status) ? body.status : null
+        if (!status) delete review[phId]
+        else review[phId] = { status, note: status === 'change' ? String(body.note || '').trim().slice(0, 600) : '', at: new Date().toISOString() }
+        return setDesign(p, d.id, { review })
+      }
       case 'design.delete':
         if (!d) return false
         return removeDesign(p, d.id)
@@ -138,9 +153,18 @@ async function write(req, res) {
     }
   })
 
+  // A discarded round: its images are deleted for good, not just unlinked.
+  if (op === 'design.delete' && body.designId) {
+    const gone = normalizeProperty(row.data).photos.flatMap((ph) => ph.versions.filter((v) => v.designId === body.designId).map((v) => v.src))
+    background(Promise.all([removeImages(gone), deleteDesignRows(id, body.designId)]).catch(() => {}))
+  }
+  if (op === 'photo.delete' && body.photoId) {
+    const ph = normalizeProperty(row.data).photos.find((x) => x.id === body.photoId)
+    if (ph) background(removeImages([ph.source === 'owner' ? ph.src : null, ...ph.versions.map((v) => v.src)]).catch(() => {}))
+  }
   if (op === 'photo.hide') background(setPhotoHidden(id, body.photoId, !!body.hidden))
   if (design) background(upsertDesign(design, { propertyId: id, user }))
-  if (op.startsWith('design.')) {
+  if (op.startsWith('design.') && op !== 'design.review') {
     background(logSubmission({ user, kind: op.replace('.', '_'), propertyId: id, lang, meta: { designId: design?.id || body.designId, mode: design?.mode, style: design?.style, light: design?.light } }))
   }
   const full = { ...next, updatedAt: new Date().toISOString() }

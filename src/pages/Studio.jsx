@@ -3,6 +3,7 @@ import { addVersion, normalizeProperty, visiblePhotos } from '../../shared/model
 import AddressSearch from '../components/AddressSearch.jsx'
 import Compare from '../components/Compare.jsx'
 import Facts from '../components/Facts.jsx'
+import Review from '../components/Review.jsx'
 import HouseProgress from '../components/HouseProgress.jsx'
 import PhotoRestyle from '../components/PhotoRestyle.jsx'
 import PropertyMap from '../components/PropertyMap.jsx'
@@ -75,6 +76,7 @@ export default function Studio({ id }) {
   const [shared, setShared] = useState(0)
   const [prPhotos, setPrPhotos] = useState(null) // the clean-up / restyle pop-up, for these photos
   const [prBusy, setPrBusy] = useState(false)
+  const [reviewing, setReviewing] = useState(null) // { designId, startAt } while the review pass is open
 
   useEffect(() => {
     health().then((h) => setFeatures(h.features || {}))
@@ -219,9 +221,62 @@ export default function Studio({ id }) {
     }
   }
 
+  // Discarding a round deletes its images for good and takes them off the share page.
   const deleteDesign = async (d) => {
-    if (!window.confirm(t('design.deleteConfirm', { name: designName(d, t) }))) return
-    await op({ op: 'design.delete', designId: d.id }, 'design_delete')
+    if (!d || !window.confirm(t('design.deleteConfirm', { name: designName(d, t) }))) return false
+    const out = await op({ op: 'design.delete', designId: d.id }, 'design_delete')
+    if (out) {
+      if (reviewing?.designId === d.id) setReviewing(null)
+      if (run?.designId === d.id && run.status !== 'running') close()
+    }
+    return !!out
+  }
+
+  // The review pass: a "looks good" or a note per image, saved to the home.
+  const saveReview = useCallback(
+    async (photoId, { status, note }) => {
+      try {
+        const d = await post('/api/properties', { op: 'design.review', propertyId: id, designId: reviewing?.designId, photoId, status, note, lang })
+        setProperty(normalizeProperty(d.property))
+        return true
+      } catch {
+        return false
+      }
+    },
+    [id, lang, reviewing?.designId],
+  )
+  // One noted image: apply the note as a change request on its current version.
+  const applyNote = useCallback(
+    async (ph, note) => {
+      const d = designs.find((x) => x.id === reviewing?.designId)
+      if (!d) return false
+      setBusy((b) => ({ ...b, [ph.id]: 'feedback' }))
+      try {
+        const r = await withRetry(() => post('/api/render', { propertyId: id, designId: d.id, photoId: ph.id, lang, feedback: note, baseVersionId: d.picks[ph.id], review: true }))
+        setProperty((p) => {
+          const next = addVersion(p, ph.id, r.version)
+          return r.design ? { ...next, designs: next.designs.map((x) => (x.id === r.design.id ? { ...x, review: r.design.review } : x)) } : next
+        })
+        track('change_request', { designId: d.id, ms: r.version.ms, from: 'review' }, { propertyId: id })
+        return true
+      } catch (e) {
+        track('change_request_failed', { code: e.code, from: 'review' }, { propertyId: id })
+        return e.code === 'no_credits' || e.code === 'plan_limit' ? 'stop' : false
+      } finally {
+        setBusy((b) => {
+          const n = { ...b }
+          delete n[ph.id]
+          return n
+        })
+      }
+    },
+    [designs, id, lang, reviewing?.designId],
+  )
+  const openReview = (d, startAt = null) => {
+    if (!d) return
+    setSides({ left: 'original', right: d.id })
+    setReviewing({ designId: d.id, startAt })
+    track('review_open', { photos: Object.keys(d.picks).length }, { propertyId: id })
   }
 
   // One photo of the right-hand design: render it again, or apply a change request.
@@ -546,6 +601,7 @@ export default function Studio({ id }) {
                     <Thumb src={img.src} width={p.width} height={p.height} />
                     {busy[p.id] && <span className="thumbs__busy spinner spinner--small" aria-hidden="true" />}
                     {right?.picks[p.id] && <span className="thumbs__done" aria-hidden="true" />}
+                    {right?.review?.[p.id]?.status === 'change' && right.review[p.id].note && <span className="thumbs__note" aria-hidden="true" title={right.review[p.id].note} />}
                   </button>
                 </li>
               )
@@ -592,6 +648,14 @@ export default function Studio({ id }) {
         )}
         {right && (
           <div className="designs__actions">
+            {Object.keys(right.picks).length > 0 && (
+              <button type="button" className="btn btn--ink btn--small" onClick={() => openReview(right, selected)} disabled={run?.status === 'running'}>
+                {(() => {
+                  const notes = Object.values(right.review || {}).filter((r) => r.status === 'change' && r.note).length
+                  return notes ? t(notes === 1 ? 'review.openNotes1' : 'review.openNotes', { n: notes }) : t('review.openShort')
+                })()}
+              </button>
+            )}
             {property.featured === right.id ? (
               <span className="tag">★ {t('design.featured')}</span>
             ) : (
@@ -605,7 +669,7 @@ export default function Studio({ id }) {
               </button>
             )}
             <button type="button" className="btn btn--quiet btn--small btn--danger" onClick={() => deleteDesign(right)} disabled={run?.status === 'running'}>
-              {t('design.delete')}
+              {t('design.discard')}
             </button>
           </div>
         )}
@@ -669,7 +733,34 @@ export default function Studio({ id }) {
         </section>
       )}
 
-      {run && <HouseProgress run={run} photos={photos} onStop={stop} onRetry={retryRun} onClose={close} />}
+      {run && (
+        <HouseProgress
+          run={run}
+          photos={photos}
+          onStop={stop}
+          onRetry={retryRun}
+          onClose={close}
+          onReview={() => {
+            const d = designs.find((x) => x.id === run.designId)
+            close()
+            openReview(d)
+          }}
+          onDiscard={() => deleteDesign(designs.find((x) => x.id === run.designId))}
+        />
+      )}
+      {reviewing && designs.some((d) => d.id === reviewing.designId) && (
+        <Review
+          property={property}
+          design={designs.find((d) => d.id === reviewing.designId)}
+          photos={visible}
+          name={designName(designs.find((d) => d.id === reviewing.designId), t)}
+          startAt={reviewing.startAt}
+          onSave={saveReview}
+          onApply={applyNote}
+          onDiscard={() => deleteDesign(designs.find((d) => d.id === reviewing.designId))}
+          onClose={() => setReviewing(null)}
+        />
+      )}
       {prPhotos && <PhotoRestyle photos={prPhotos} styles={STYLES} lights={LIGHTS} busy={prBusy} onStart={restylePhotos} onClose={() => (setPrPhotos(null), track('photo_restyle_dismiss', null, { propertyId: id }))} />}
     </main>
   )

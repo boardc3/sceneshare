@@ -772,6 +772,21 @@ export async function putImage(id, buffer, { propertyId = null, kind = null, con
   return true
 }
 
+export async function deleteImages(ids) {
+  const s = await ensure()
+  if (!s || !ids.length) return 0
+  const rows = await s`delete from images where id = any(${ids}) returning id`
+  return rows.length
+}
+
+// A deleted round of images: its design row and render log go with it.
+export async function deleteDesignRows(propertyId, designId) {
+  const s = await ensure()
+  if (!s) return
+  await s`delete from renders where property_id = ${propertyId} and design_id = ${designId}`
+  await s`delete from designs where property_id = ${propertyId} and id = ${designId}`
+}
+
 export async function getImage(id) {
   const s = await ensure()
   if (!s) return null
@@ -851,7 +866,9 @@ export async function exportUser(user) {
 export async function deleteUserData(user) {
   const s = await ensure()
   if (!s) return { properties: 0 }
-  const props = await s`select id from properties where owner_user_id = ${user.id}`
+  const props = await s`select id, data from properties where owner_user_id = ${user.id}`
+  // Files in Blob storage are removed by the caller (storage.js) from these URLs.
+  const files = props.flatMap((p) => (p.data?.photos || []).flatMap((ph) => [ph.source === 'owner' ? ph.src : null, ...(ph.versions || []).map((v) => v.src)])).filter((u) => /^https:/.test(u || ''))
   for (const p of props) await deleteProperty(p.id)
   await s`delete from designs where user_id = ${user.id}`
   await s`delete from renders where user_id = ${user.id}`
@@ -866,7 +883,7 @@ export async function deleteUserData(user) {
   await s`delete from credit_ledger where user_id = ${user.id}`
   await s`delete from extras where user_id = ${user.id}`
   await s`delete from users where id = ${user.id}`
-  return { properties: props.length }
+  return { properties: props.length, files }
 }
 
 // The sign-in record (Neon Auth keeps it in the neon_auth schema of this same

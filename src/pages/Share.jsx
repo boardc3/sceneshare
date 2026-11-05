@@ -145,8 +145,22 @@ export default function Share({ id }) {
               <li key={p.id}>
                 <button type="button" className="roomcard" onClick={() => (setOpenRoom(i), track('room_open', { index: i }, { propertyId: id }))} aria-label={t('share.openRoom', { n: i + 1 })}>
                   <img src={shown.src} alt="" loading="lazy" width={p.width || undefined} height={p.height || undefined} />
-                  <span className={`roomcard__tag ${altered ? 'roomcard__tag--alt' : ''}`}>{altered ? `${shortSideLabel(property, R ? sides.right : sides.left, t)} · ${t('share.altered')}` : t('studio.current')}</span>
-                  {R && <span className="roomcard__cmp">{t('share.compare')}</span>}
+                  <span className={`roomcard__tag ${altered ? 'roomcard__tag--alt' : ''}`} title={altered ? `${shortSideLabel(property, R ? sides.right : sides.left, t)} · ${t('share.altered')}` : undefined}>
+                    {altered ? (
+                      <>
+                        <span className="roomcard__long">{`${shortSideLabel(property, R ? sides.right : sides.left, t)} · ${t('share.altered')}`}</span>
+                        <span className="roomcard__short">{t('share.alteredShort')}</span>
+                      </>
+                    ) : (
+                      t('studio.current')
+                    )}
+                  </span>
+                  {R && (
+                    <span className="roomcard__cmp" aria-label={t('share.compare')}>
+                      <span className="roomcard__long">{t('share.compare')}</span>
+                      <span className="roomcard__short" aria-hidden="true">⇆</span>
+                    </span>
+                  )}
                 </button>
               </li>
             )

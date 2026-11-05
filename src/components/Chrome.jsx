@@ -227,7 +227,7 @@ export function UpgradePrompt() {
   )
 }
 
-export function Modal({ labelledBy, onClose, children, wide = false, locked = false }) {
+export function Modal({ labelledBy, onClose, children, wide = false, locked = false, size = null }) {
   const ref = useRef(null)
   const closeRef = useRef(onClose)
   const lockRef = useRef(locked)
@@ -261,8 +261,8 @@ export function Modal({ labelledBy, onClose, children, wide = false, locked = fa
     }
   }, [])
   return (
-    <div className="scrim" onMouseDown={(e) => !locked && e.target === e.currentTarget && onClose()}>
-      <div className={`dialog${wide ? ' dialog--wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy} ref={ref}>
+    <div className={`scrim${size ? ` scrim--${size}` : ''}`} onMouseDown={(e) => !locked && e.target === e.currentTarget && onClose()}>
+      <div className={`dialog${wide ? ' dialog--wide' : ''}${size ? ` dialog--${size}` : ''}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy} ref={ref}>
         {children}
       </div>
     </div>

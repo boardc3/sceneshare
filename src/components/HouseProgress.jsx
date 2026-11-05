@@ -4,7 +4,7 @@ import { Modal } from './Chrome.jsx'
 
 // The loading block for "Restyle this house": the page waits behind it, every
 // photo shows its state, and the result is clear at the end.
-export default function HouseProgress({ run, photos, onStop, onRetry, onClose }) {
+export default function HouseProgress({ run, photos, onStop, onRetry, onClose, onReview, onDiscard }) {
   const { t } = useI18n()
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
@@ -69,14 +69,30 @@ export default function HouseProgress({ run, photos, onStop, onRetry, onClose })
             </button>
           ) : (
             <>
+              {done > 0 && onDiscard && (
+                <button type="button" className="btn btn--quiet btn--danger run__discard" onClick={onDiscard}>
+                  {t('design.discard')}
+                </button>
+              )}
               {total - done > 0 && run.status !== 'fatal' && (
                 <button type="button" className="btn btn--quiet" onClick={onRetry}>
                   {t('run.retry', { n: total - done })}
                 </button>
               )}
-              <button type="button" className="btn btn--glow" onClick={onClose}>
-                {run.status === 'done' ? t('run.see') : t('run.close')}
-              </button>
+              {done > 1 && onReview ? (
+                <>
+                  <button type="button" className="btn btn--quiet" onClick={onClose}>
+                    {run.status === 'done' ? t('run.see') : t('run.close')}
+                  </button>
+                  <button type="button" className="btn btn--glow" onClick={onReview}>
+                    {t('review.open', { n: done })}
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="btn btn--glow" onClick={onClose}>
+                  {run.status === 'done' ? t('run.see') : t('run.close')}
+                </button>
+              )}
             </>
           )}
         </div>

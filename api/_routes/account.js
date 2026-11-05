@@ -2,7 +2,8 @@ import { authCall, authEnabled, sessionUser } from '../_lib/auth.js'
 import { cancelForDeletion } from '../_lib/billing.js'
 import { TERMS_VERSION } from '../_lib/config.js'
 import { acceptTerms, addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, setPrefs, touchUser } from '../_lib/db.js'
-import { ipHash } from '../_lib/log.js'
+import { background, ipHash } from '../_lib/log.js'
+import { removeImages } from '../_lib/storage.js'
 import { isAdmin, newId, requireUser } from '../_lib/gate.js'
 import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 
@@ -58,6 +59,7 @@ export default route(
       throw new ApiError(502, 'subscription_cancel_failed', 'We could not cancel your subscription just now, so your account was not deleted. Please try again.')
     })
     const removed = await deleteUserData(user)
+    background(removeImages(removed.files || []).catch(() => {}))
     // The sign-in record itself lives in Neon Auth.
     let r = await authCall(req, res, 'delete-user', { body: {} }).catch((e) => ({ ok: false, status: 0, data: { message: e.message } }))
     if (!r.ok) {
