@@ -269,6 +269,11 @@ async function migrate(s) {
     data jsonb
   )`
   await s`create index if not exists credit_ledger_user_idx on credit_ledger (user_id, at desc)`
+  // Debits claim a numbered slot per pool and cycle; the unique index makes two
+  // simultaneous renders unable to spend the same last credit.
+  await s`alter table credit_ledger add column if not exists cycle text`
+  await s`alter table credit_ledger add column if not exists slot integer`
+  await s`create unique index if not exists credit_ledger_slot_idx on credit_ledger (user_id, pool, cycle, slot) where slot is not null`
   // Extras (Premium): each adds property slots for a time; its credits go into credit_ledger.
   await s`create table if not exists extras (
     id text primary key,
@@ -383,7 +388,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 11
+const SCHEMA_VERSION = 12
 
 async function upToDate(s) {
   try {
@@ -1332,16 +1337,36 @@ export async function debitCredit(userId, { id, kind, since, allotment, packPool
     await s`insert into credit_ledger (id, user_id, delta, kind, pool, ref) values (${id}, ${userId}, -1, ${kind}, 'unmetered', ${ref})`
     return 'unmetered'
   }
-  const rows = await s`with st as (
-      select
-        (select count(*) from credit_ledger where user_id = ${userId} and pool = ${planPool} and at >= ${since}) as used,
-        (select coalesce(sum(delta), 0) from credit_ledger where user_id = ${userId} and ((delta > 0 and mode = ${packPool.slice(5)}) or pool = ${packPool})) as packs
-    )
-    insert into credit_ledger (id, user_id, delta, kind, pool, ref)
-    select ${id}, ${userId}, -1, ${kind}, case when st.used < ${allotment} then ${planPool} else ${packPool} end, ${ref} from st
-    where st.used < ${allotment} or st.packs > 0
-    returning pool`
-  return rows[0]?.pool || null
+  // Plan credits first (this cycle's allotment), then bought packs. The check and
+  // the debit are one statement, and each debit takes the next slot number in its
+  // pool: if another request took that slot at the same moment, the unique index
+  // refuses this insert and we look again. Spending past the balance is impossible.
+  const mode = packPool.slice(5)
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const rows = await s`with st as (
+        select
+          (select count(*) from credit_ledger where user_id = ${userId} and pool = ${planPool} and at >= ${since} and delta < 0) as used,
+          (select coalesce(max(slot), 0) from credit_ledger where user_id = ${userId} and pool = ${planPool} and cycle = ${since}) as plan_slot,
+          (select coalesce(sum(delta), 0) from credit_ledger where user_id = ${userId} and ((delta > 0 and mode = ${mode}) or pool = ${packPool})) as packs,
+          (select coalesce(max(slot), 0) from credit_ledger where user_id = ${userId} and pool = ${packPool} and cycle = 'packs') as pack_slot
+      )
+      insert into credit_ledger (id, user_id, delta, kind, pool, ref, cycle, slot)
+      select ${id}, ${userId}, -1, ${kind},
+        case when st.used < ${allotment} then ${planPool} else ${packPool} end, ${ref},
+        case when st.used < ${allotment} then ${since} else 'packs' end,
+        case when st.used < ${allotment} then st.plan_slot + 1 else st.pack_slot + 1 end
+      from st where st.used < ${allotment} or st.packs > 0
+      on conflict do nothing
+      returning pool`
+    if (rows[0]?.pool) return rows[0].pool
+    // Nothing inserted: either no credit is left, or another request won the slot.
+    const [left] = await s`select
+        (select count(*) from credit_ledger where user_id = ${userId} and pool = ${planPool} and at >= ${since} and delta < 0) < ${allotment} as plan_left,
+        (select coalesce(sum(delta), 0) from credit_ledger where user_id = ${userId} and ((delta > 0 and mode = ${mode}) or pool = ${packPool})) > 0 as pack_left`
+    if (!left?.plan_left && !left?.pack_left) return null
+    await new Promise((r) => setTimeout(r, 20 + Math.random() * 60))
+  }
+  return null
 }
 
 // Extras still running for this account (in this billing mode), soonest to end first.

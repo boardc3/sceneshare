@@ -1,4 +1,4 @@
-import { sessionUser } from '../_lib/auth.js'
+import { originOf, sessionUser } from '../_lib/auth.js'
 import { assertCanEmail } from '../_lib/billing.js'
 import { config, TERMS_VERSION } from '../_lib/config.js'
 import { createShare, listShares, propertyEngagement, logSubmission, markShareSent, ownerAccepted, propertyRow } from '../_lib/db.js'
@@ -48,7 +48,7 @@ export default route(
     const lang = body.lang === 'zh' ? 'zh' : 'en'
     // The browser may propose the id, so a copied or texted link works instantly.
     const id = /^[a-z0-9]{10}$/.test(body.id || '') ? body.id : newId(10)
-    const origin = (req.headers['x-forwarded-proto'] ? `${String(req.headers['x-forwarded-proto']).split(',')[0]}://` : 'https://') + String(req.headers['x-forwarded-host'] || req.headers.host || '')
+    const origin = originOf(req)
     // The sender chooses whether opens are tracked (on by default); the choice is recorded.
     const tracked = body.tracked !== false
     const url = `${origin}/p/${row.id}${tracked ? `?s=${id}${lang === 'zh' ? '&lang=zh' : ''}` : lang === 'zh' ? '?lang=zh' : ''}`
@@ -59,8 +59,11 @@ export default route(
 
     // Sent by us when an email service is configured; otherwise the browser opens
     // the sender's own mail app with the tracked link filled in.
+    // Only the home's signed-in owner can have Sceneshare's server send email, so the
+    // share form can't be used as a relay; buyers get their own mail app with the
+    // link filled in.
     let sent = false
-    if (channel === 'email' && body.send !== false && config.mailKey && config.mailFrom) {
+    if (channel === 'email' && byOwner && body.send !== false && config.mailKey && config.mailFrom) {
       sent = await sendShareEmail({ to: recipients, replyTo: user?.email || null, senderName, message, url, address: row.data?.address?.formatted || '', lang })
       if (sent) await markShareSent(id)
     }

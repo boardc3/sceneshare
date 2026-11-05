@@ -1,6 +1,7 @@
 import { authEnabled, proxyAuth } from './_lib/auth.js'
 import { logRequest } from './_lib/log.js'
-import { fail } from './_lib/http.js'
+import { isTrustedOrigin } from './_lib/config.js'
+import { ApiError, enforceLimit, fail } from './_lib/http.js'
 
 // /api/auth/* → Neon Auth (vercel.json rewrites /api/auth/<path> to /api/auth?__path=<path>).
 // Sign up, sign in (email + password, Google), sign out, session, verification.
@@ -20,6 +21,24 @@ export default async function handler(req, res) {
       status = 404
       code = 'not_found'
       return fail(res, 404, code, 'Unknown auth route.')
+    }
+    const o = req.headers?.origin
+    if (req.method === 'POST' && o && o !== 'null' && !isTrustedOrigin(o)) {
+      status = 403
+      code = 'bad_origin'
+      return fail(res, 403, code, 'This request came from another site.')
+    }
+    // Password guessing and sign-up floods: per IP, on top of Neon Auth's own limits.
+    const guard = { 'sign-in/email': { hour: 30, day: 120 }, 'sign-up/email': { hour: 10, day: 30 }, 'forget-password': { hour: 6, day: 20 }, 'request-password-reset': { hour: 6, day: 20 } }[path]
+    if (guard && req.method === 'POST') {
+      try {
+        await enforceLimit(req, `auth/${path}`, guard)
+      } catch (e) {
+        if (!(e instanceof ApiError)) throw e
+        status = 429
+        code = 'rate_limited'
+        return fail(res, 429, code, 'Too many attempts. Wait a few minutes and try again.')
+      }
     }
     status = await proxyAuth(req, res, path)
   } catch (e) {

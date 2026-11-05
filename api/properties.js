@@ -20,7 +20,8 @@ export default route(
     if (req.method === 'GET') return read(req, res)
     return write(req, res)
   },
-  { name: 'properties' },
+  // Buyers read share pages (GET) a lot from shared offices; edits are the owner's.
+  { name: 'properties', limit: { GET: { hour: 3000 }, POST: { hour: 1500, day: 8000 } } },
 )
 
 async function read(req, res) {

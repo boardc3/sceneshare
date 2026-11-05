@@ -1,3 +1,4 @@
+import { isTrustedOrigin } from './config.js'
 import { recentRequests } from './db.js'
 import { ipHash, logRequest } from './log.js'
 
@@ -47,7 +48,7 @@ export class ApiError extends Error {
 }
 
 // Rate limits, counted from api_log: per account when signed in, else per hashed IP.
-async function enforceLimit(req, name, { hour, day }, method = null) {
+export async function enforceLimit(req, name, { hour, day }, method = null) {
   const key = { route: name, ipHash: ipHash(req), userId: req._user?.id || null, method }
   if (!key.userId && !key.ipHash) return
   const tooMany = async (n, minutes) => n && (await recentRequests({ ...key, minutes })) >= n
@@ -65,6 +66,12 @@ export function route(methods, fn, opts = {}) {
     const name = opts.name || new URL(req.url, 'http://local').pathname.replace(/^\/api\//, '')
     try {
       if (!methods.includes(req.method)) throw new ApiError(405, 'method_not_allowed', `Use ${methods.join(' or ')}.`)
+      // Changes only from Sceneshare's own pages: a browser request carrying another
+      // site's Origin is refused (server-to-server calls such as Stripe send none).
+      const o = req.headers?.origin
+      if (req.method !== 'GET' && req.method !== 'HEAD' && o && o !== 'null' && !isTrustedOrigin(o) && !opts.anyOrigin) {
+        throw new ApiError(403, 'bad_origin', 'This request came from another site.')
+      }
       if (opts.before) await opts.before(req, res)
       // `limit` may vary by method: { GET: {...}, POST: {...} } (a method left out is unlimited).
       const perMethod = opts.limit && !(opts.limit.hour || opts.limit.day)

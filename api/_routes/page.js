@@ -1,3 +1,4 @@
+import { originOf } from '../_lib/auth.js'
 import { normalizeProperty, visiblePhotos } from '../../shared/model.js'
 import { TERMS_VERSION } from '../_lib/config.js'
 import { ownerAccepted, propertyRow } from '../_lib/db.js'
@@ -54,8 +55,9 @@ export default async function handler(req, res) {
   const u = new URL(req.url, 'http://local')
   const id = u.searchParams.get('id') || ''
   const zh = u.searchParams.get('lang') === 'zh'
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '')
-  const origin = `${/^(localhost|127\.)/.test(host) ? 'http' : 'https'}://${host}`
+  // Only a known Sceneshare origin: the page fetches its own shell from it and puts
+  // it in link previews, so a forged Host header must not choose where.
+  const origin = originOf(req)
   let status = 200
   try {
     const html = await appShell(origin)

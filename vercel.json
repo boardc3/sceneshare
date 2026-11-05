@@ -98,8 +98,8 @@
           "value": "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
         },
         {
-          "key": "Content-Security-Policy-Report-Only",
-          "value": "default-src 'self'; script-src 'self' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://*.mapbox.com https://*.public.blob.vercel-storage.com https://photos.zillowstatic.com https://ssl.cdn-redfin.com https://*.googleusercontent.com; connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://va.vercel-scripts.com; worker-src 'self' blob:; child-src blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri /api/events"
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' https://va.vercel-scripts.com https://vercel.live; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com https://vercel.live https://assets.vercel.com; img-src 'self' data: blob: https://vercel.com https://vercel.live https://*.mapbox.com https://*.public.blob.vercel-storage.com https://photos.zillowstatic.com https://ssl.cdn-redfin.com https://*.googleusercontent.com; connect-src 'self' https://vercel.live wss://ws-us3.pusher.com https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://va.vercel-scripts.com; worker-src 'self' blob:; child-src blob:; frame-src https://vercel.live; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests; report-uri /api/events"
         }
       ]
     }

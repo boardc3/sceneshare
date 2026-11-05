@@ -1,8 +1,8 @@
 import { originOf } from '../_lib/auth.js'
-import { EXTRA, CREDIT_PACKS, PLANS, PRICES, TRIAL_DAYS, applyCreditSession, applySubscription, billingFor, changeSubscription, checkoutSession, creditsCheckout, portalSession, previewBuyCredits, previewBuyExtra, extraCheckout, previewChange, previewSetCancel, previewSubscribe, readChoice, syncCreditSession, syncFromStripe, verifyWebhook } from '../_lib/billing.js'
+import { EXTRA, CREDIT_PACKS, PLANS, PRICES, TRIAL_DAYS, applyCreditSession, applySubscription, billingFor, changeSubscription, checkoutSession, creditsCheckout, portalSession, previewBuyCredits, previewBuyExtra, extraCheckout, previewChange, previewSetCancel, previewSubscribe, readChoice, syncCreditSession, stripe, syncFromStripe, verifyWebhook } from '../_lib/billing.js'
 import { billingState, config } from '../_lib/config.js'
 import { ensureUserRow, logSubmission, recordBillingEvent, userByStripeCustomer } from '../_lib/db.js'
-import { requireUser, validId } from '../_lib/gate.js'
+import { isAdmin, requireUser, validId } from '../_lib/gate.js'
 import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 
 // GET  /api/billing[?propertyId=…][&sync=1]   the account's plan, limits, usage and days left
@@ -28,11 +28,25 @@ const SUB_EVENTS = ['customer.subscription.created', 'customer.subscription.upda
 
 async function webhook(req, res) {
   const raw = await rawBody(req)
-  if (!verifyWebhook(raw, req.headers['stripe-signature'])) {
-    console.error(JSON.stringify({ t: 'billing', msg: 'webhook signature rejected', configured: Boolean(config.stripeWebhookSecret) }))
-    throw new ApiError(400, 'bad_signature', 'Signature check failed.')
+  let event = null
+  if (verifyWebhook(raw, req.headers['stripe-signature'])) {
+    event = JSON.parse(raw)
+  } else {
+    // Vercel parses JSON bodies before the handler runs, so the exact signed bytes
+    // are often gone. Then the payload is not trusted at all: only its event id is
+    // read, and the event itself is fetched from Stripe with the secret key.
+    let id = null
+    try {
+      id = JSON.parse(raw)?.id
+    } catch {
+      /* not JSON */
+    }
+    if (typeof id === 'string' && /^evt_[A-Za-z0-9]+$/.test(id) && config.stripeKey) event = await stripe('GET', `events/${id}`).catch(() => null)
+    if (!event?.id || event.id !== id) {
+      console.error(JSON.stringify({ t: 'billing', msg: 'webhook rejected: bad signature and not retrievable', configured: Boolean(config.stripeWebhookSecret) }))
+      throw new ApiError(400, 'bad_signature', 'Signature check failed.')
+    }
   }
-  const event = JSON.parse(raw)
   const obj = event.data?.object || {}
   const customer = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id
   const owner = (customer && (await userByStripeCustomer(customer))) || null
@@ -56,6 +70,14 @@ async function webhook(req, res) {
     console.log(JSON.stringify({ t: 'billing', msg: 'payment failed', userId, invoice: obj.id, attempt: obj.attempt_count }))
   }
   send(res, 200, { ok: true })
+}
+
+// Preview mode changes plans and adds credits without payment, so only admins and
+// named testers (PREVIEW_TESTER_EMAILS) may use it; everyone else keeps the plan
+// and credits they have. Otherwise any account could give itself free credits.
+function assertPreviewAllowed(user) {
+  if (isAdmin(user) || config.previewTesters.includes(String(user.email || '').toLowerCase())) return
+  throw new ApiError(403, 'preview_locked', 'Paid plans and credit purchases open soon. To get more credits now, email Chris@sceneset.ai.')
 }
 
 export default route(
@@ -85,6 +107,7 @@ export default route(
     if (op === 'checkout') {
       const choice = readChoice(body)
       if (mode === 'preview') {
+        assertPreviewAllowed(user)
         await previewSubscribe(user, choice)
         await logSubmission({ user, kind: 'plan_upgrade', meta: { ...choice, mode } })
         return send(res, 200, { ok: true, preview: true, billing: await billingFor(user) })
@@ -95,13 +118,16 @@ export default route(
     }
     if (op === 'change') {
       const { tier } = readChoice(body)
-      if (mode === 'preview') await previewChange(user, { tier })
-      else await changeSubscription(user, { tier })
+      if (mode === 'preview') {
+        assertPreviewAllowed(user)
+        await previewChange(user, { tier })
+      } else await changeSubscription(user, { tier })
       await logSubmission({ user, kind: 'plan_change', meta: { tier, mode } })
       return send(res, 200, { ok: true, billing: await billingFor(user) })
     }
     if (op === 'extra') {
       if (mode === 'preview') {
+        assertPreviewAllowed(user)
         await previewBuyExtra(user, body.homes)
         await logSubmission({ user, kind: 'extra_buy', meta: { mode, homes: body.homes } })
         return send(res, 200, { ok: true, preview: true, billing: await billingFor(user) })
@@ -114,6 +140,7 @@ export default route(
       const pack = String(body.pack || '')
       if (!CREDIT_PACKS[pack]) throw new ApiError(400, 'bad_pack', 'Unknown credit pack.')
       if (mode === 'preview') {
+        assertPreviewAllowed(user)
         await previewBuyCredits(user, pack)
         await logSubmission({ user, kind: 'credits_buy', meta: { pack, mode } })
         return send(res, 200, { ok: true, preview: true, billing: await billingFor(user) })
@@ -128,6 +155,7 @@ export default route(
     }
     if (op === 'cancel' || op === 'resume') {
       if (mode !== 'preview') throw new ApiError(400, 'use_portal', 'Manage your subscription in the billing portal.')
+      assertPreviewAllowed(user)
       await previewSetCancel(user, op === 'cancel')
       await logSubmission({ user, kind: `plan_${op}`, meta: { mode } })
       return send(res, 200, { ok: true, billing: await billingFor(user) })

@@ -46,7 +46,10 @@ export const config = {
   authSecret: env.AUTH_COOKIE_SECRET || '',
   adminEmails,
   superAdminEmails,
+  // Accounts allowed to use preview-mode purchases besides admins (comma-separated).
+  previewTesters: list(env.PREVIEW_TESTER_EMAILS),
   production: env.VERCEL_ENV === 'production',
+  siteUrl: String(env.SITE_URL || 'https://www.sceneshare.app').replace(/\/+$/, ''),
   geminiKey: env.GOOGLE_API_KEY || env.GEMINI_API_KEY || '',
   // "Nano Banana 2" = Gemini 3.1 Flash Image. Override without a redeploy of code.
   imageModel: env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-image',
@@ -110,3 +113,10 @@ export function billingCheck() {
   if (/^(sk|rk)_live_/.test(key)) return config.stripeAllowLive ? { state: 'live', reason: config.stripeWebhookSecret ? 'ok' : 'STRIPE_WEBHOOK_SECRET is missing' } : { state: 'preview', reason: 'live key without STRIPE_ALLOW_LIVE=1' }
   return { state: 'preview', reason: 'STRIPE_SECRET_KEY does not look like a Stripe secret key (sk_test_…)' }
 }
+
+// Origins that belong to Sceneshare: production, this project's Vercel previews, and
+// (outside production) local development. Used for links we build and to refuse
+// state-changing requests sent from other sites.
+const TRUSTED_ORIGINS = [/^https:\/\/(www\.)?sceneshare\.app$/, /^https:\/\/sceneshare-[a-z0-9-]+\.vercel\.app$/]
+const DEV_ORIGINS = [/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, /^https:\/\/[a-z0-9.-]+\.test$/]
+export const isTrustedOrigin = (o) => typeof o === 'string' && (TRUSTED_ORIGINS.some((re) => re.test(o)) || (!config.production && DEV_ORIGINS.some((re) => re.test(o))))

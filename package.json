@@ -28,5 +28,15 @@
     "@electric-sql/pglite": "0.3.16",
     "@vitejs/plugin-react": "^6.2.1",
     "vite": "^8.3.5"
+  },
+  "overrides": {
+    "better-auth": "1.7.17",
+    "@better-auth/core": "1.7.17",
+    "@better-auth/drizzle-adapter": "1.7.17",
+    "@better-auth/oauth-provider": "1.7.17",
+    "@better-auth/passkey": "1.7.17",
+    "@better-auth/api-key": "1.7.17",
+    "zod": "^4.6.7",
+    "@vercel/oidc": "^4.0.6"
   }
 }

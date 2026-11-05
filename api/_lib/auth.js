@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { createAuthServer, handleAuthProxyRequest, NEON_AUTH_SESSION_COOKIE_NAME, resolveNeonAuthLogging, serializeSetCookie } from '@neondatabase/auth/server'
-import { config } from './config.js'
+import { config, isTrustedOrigin } from './config.js'
 
 // Accounts run on Neon Auth (managed Better Auth) in the same Neon project as the
 // data. The browser never calls Neon Auth directly: /api/auth/* proxies it, so the
@@ -22,12 +22,18 @@ function cookieSecret() {
 }
 
 // The origin the browser is on — what Neon Auth checks against its trusted domains.
+// The site's own origin for links we build (share emails, Stripe return URLs, auth
+// callbacks). Only known Sceneshare origins are accepted from the request; anything
+// else falls back to the canonical site, so a forged Origin/Host header can't point
+// a link somewhere else.
+export { isTrustedOrigin }
 export function originOf(req) {
   const h = req.headers || {}
-  if (h.origin && /^https?:\/\/[^/]+$/.test(h.origin)) return h.origin
-  const host = h['x-forwarded-host'] || h.host || 'localhost'
-  const proto = h['x-forwarded-proto'] || (/^(localhost|127\.)/.test(host) ? 'http' : 'https')
-  return `${String(proto).split(',')[0]}://${String(host).split(',')[0]}`
+  if (isTrustedOrigin(h.origin)) return h.origin
+  const host = String(h['x-forwarded-host'] || h.host || '').split(',')[0].trim()
+  const proto = String(h['x-forwarded-proto'] || (/^(localhost|127\.)/.test(host) ? 'http' : 'https')).split(',')[0].trim()
+  const built = `${proto}://${host}`
+  return isTrustedOrigin(built) ? built : config.siteUrl
 }
 
 async function readRaw(req) {
