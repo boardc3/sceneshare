@@ -5,6 +5,7 @@
 // Visitors can decline in the cookie notice; Global Privacy Control is honoured as
 // a decline. Declined visitors send no analytics at all — only error reports,
 // which carry no identifiers.
+import { logError } from './errorLog.js'
 import { inject } from '@vercel/analytics'
 import { startPage } from './engagement.js'
 
@@ -140,6 +141,7 @@ export function reportError(error, extra = {}) {
   if (errorsSent++ > 20) return
   const message = String(error?.message || error || 'unknown').slice(0, 500)
   sendNow([{ name: 'client_error', path: location.pathname, at: new Date().toISOString(), props: { message, stack: String(error?.stack || '').slice(0, 1500), ...extra } }], { anonymous: true })
+  logError({ source: 'browser', code: extra.source || 'error', message, detail: [String(error?.stack || '').slice(0, 2500), Object.keys(extra).length ? JSON.stringify(extra).slice(0, 1200) : null].filter(Boolean).join('\n') })
 }
 
 let vercelStarted = false

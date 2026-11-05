@@ -282,6 +282,34 @@ async function migrate(s) {
   )`
   await s`create index if not exists extras_user_idx on extras (user_id, expires_at desc)`
 
+  // Every error, wherever it happened, for review on /admin: the server's own
+  // failures (any 4xx/5xx), failed requests as the browser saw them, and browser crashes.
+  await s`create table if not exists error_log (
+    id bigserial primary key,
+    at timestamptz not null default now(),
+    source text not null,
+    level text not null default 'error',
+    method text,
+    route text,
+    path text,
+    page text,
+    status integer,
+    code text,
+    message text,
+    detail text,
+    user_id text,
+    visitor_id text,
+    request_id text,
+    ip_hash text,
+    country text,
+    device text,
+    lang text,
+    shown text,
+    reviewed_at timestamptz
+  )`
+  await s`create index if not exists error_log_at_idx on error_log (at desc)`
+  await s`create index if not exists error_log_open_idx on error_log (reviewed_at, at desc)`
+
   await s`create table if not exists events (
     id bigserial primary key,
     at timestamptz not null default now(),
@@ -355,7 +383,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 10
+const SCHEMA_VERSION = 11
 
 async function upToDate(s) {
   try {
@@ -787,6 +815,49 @@ export async function deleteDesignRows(propertyId, designId) {
   await s`delete from designs where property_id = ${propertyId} and id = ${designId}`
 }
 
+// ---------------------------------------------------------------- error log
+const clip = (v, n) => (v == null ? null : String(v).slice(0, n))
+export async function insertErrors(rows) {
+  const s = await ensure()
+  if (!s || !rows.length) return 0
+  for (const r of rows.slice(0, 50)) {
+    await s`insert into error_log (at, source, level, method, route, path, page, status, code, message, detail, user_id, visitor_id, request_id, ip_hash, country, device, lang, shown)
+      values (${r.at || new Date().toISOString()}, ${clip(r.source, 20)}, ${clip(r.level || 'error', 10)}, ${clip(r.method, 10)}, ${clip(r.route, 60)}, ${clip(r.path, 300)}, ${clip(r.page, 300)},
+        ${Number.isFinite(r.status) ? r.status : null}, ${clip(r.code, 60)}, ${clip(r.message, 1000)}, ${clip(r.detail, 4000)}, ${clip(r.userId, 60)}, ${clip(r.visitorId, 40)},
+        ${clip(r.requestId, 120)}, ${clip(r.ipHash, 40)}, ${clip(r.country, 4)}, ${clip(r.device, 12)}, ${clip(r.lang, 4)}, ${clip(r.shown, 12)})`
+  }
+  return rows.length
+}
+
+export async function listErrors({ days = 7, source = null, level = null, open = false, limit = 200 } = {}) {
+  const s = await ensure()
+  if (!s) return { rows: [], summary: [] }
+  const since = new Date(Date.now() - Math.min(180, Math.max(1, days)) * 864e5).toISOString()
+  const src = source || '%'
+  const lvl = level || '%'
+  const rows = await s`select e.id, e.at, e.source, e.level, e.method, e.route, e.path, e.page, e.status, e.code, e.message, e.detail, e.request_id, e.country, e.device, e.lang, e.shown, e.reviewed_at, e.user_id, u.email
+    from error_log e left join users u on u.id = e.user_id
+    where e.at > ${since} and e.source like ${src} and e.level like ${lvl} and (${!open} or e.reviewed_at is null)
+    order by e.at desc limit ${Math.min(500, limit)}`
+  const summary = await s`select source, level, coalesce(code, 'http_' || status) as code, coalesce(route, path) as where_, count(*)::int as n, max(at) as last_at,
+      count(*) filter (where reviewed_at is null)::int as open
+    from error_log where at > ${since} group by 1, 2, 3, 4 order by n desc limit 40`
+  const [totals] = await s`select count(*)::int as n, count(*) filter (where reviewed_at is null)::int as open,
+      count(*) filter (where at > now() - interval '24 hours')::int as day, count(*) filter (where level = 'error' and reviewed_at is null)::int as open_errors
+    from error_log where at > ${since}`
+  return { rows, summary, totals }
+}
+
+export async function reviewErrors({ ids = null, all = false, reviewed = true }) {
+  const s = await ensure()
+  if (!s) return 0
+  const at = reviewed ? new Date().toISOString() : null
+  if (all) return (await s`update error_log set reviewed_at = ${at} where reviewed_at is null returning id`).length
+  const list = (ids || []).map(Number).filter(Number.isFinite).slice(0, 500)
+  if (!list.length) return 0
+  return (await s`update error_log set reviewed_at = ${at} where id = any(${list}) returning id`).length
+}
+
 export async function getImage(id) {
   const s = await ensure()
   if (!s) return null
@@ -816,6 +887,7 @@ export function insertApiLog(r) {
     // Retention (see the privacy policy): request logs 90 days, analytics events 13 months.
     if (Math.random() < 0.002) {
       await s`delete from api_log where at < now() - interval '90 days'`
+      await s`delete from error_log where at < now() - interval '180 days'`
       await s`delete from events where at < now() - interval '400 days'`
       await s`delete from leads where user_id is null and source in ('buyer', 'visitor') and last_seen < now() - interval '24 months'`
     }

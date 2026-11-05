@@ -294,7 +294,7 @@ function Privacy() {
               <td>Internet and electronic activity</td>
               <td>Pages viewed, actions taken (for example “restyle started,” “link copied”), device type, language, referring page, error reports, and records of each request to our servers (route, time, result).</td>
               <td>Your browser; our servers</td>
-              <td>Analytics events 13 months. Server request logs 90 days. Our hosting provider’s own logs per its retention.</td>
+              <td>Analytics events 13 months. Server request logs 90 days. Error reports 180 days. Our hosting provider’s own logs per its retention.</td>
             </tr>
             <tr>
               <td>Approximate location</td>

@@ -74,6 +74,7 @@ export function route(methods, fn, opts = {}) {
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 500
       res._code = err.code || 'server_error'
+      res._err = { message: err instanceof ApiError ? err.publicMessage || err.message : String(err?.message || err), stack: status >= 500 ? String(err?.stack || '').slice(0, 3000) : null }
       if (!(err instanceof ApiError) || err.status >= 500) {
         console.error(JSON.stringify({ t: 'error', route: name, err: String(err?.stack || err).slice(0, 1500) }))
       }
@@ -81,7 +82,7 @@ export function route(methods, fn, opts = {}) {
         send(res, status, { ok: false, error: res._code, message: err.publicMessage || 'Something went wrong on our side. Try again in a moment.', ...(err.extra || {}) })
       }
     } finally {
-      logRequest(req, { route: name, status: res.statusCode || 500, ms: Date.now() - started, code: res._code || null, meta: res._meta || null })
+      logRequest(req, { route: name, status: res.statusCode || 500, ms: Date.now() - started, code: res._code || null, meta: res._meta || null, error: res._err || null })
     }
   }
 }

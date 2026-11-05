@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { get, shown } from '../lib/api.js'
+import { Fragment, useCallback, useEffect, useState } from 'react'
+import { get, post, shown } from '../lib/api.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
 import { Link } from '../router.jsx'
 
@@ -104,6 +104,8 @@ export default function Admin() {
           </li>
         ))}
       </ul>
+
+      <ErrorLog />
 
       {o.engagement && <EngagementPanel e={o.engagement} />}
 
@@ -231,6 +233,186 @@ function EngagementPanel({ e }) {
           />
         </section>
       </div>
+    </section>
+  )
+}
+
+// The error log: every failed request (server and browser side) and every browser
+// crash, newest first. Open = not yet reviewed. Click a row for the full details.
+const SRC = { server: 'Server', api: 'Request (browser)', browser: 'Browser crash' }
+const SHOWN = { inline: 'explained on the page', notice: 'error notice shown', prompt: 'own prompt (plan/terms/sign-in)', retried: 'retried automatically' }
+function ErrorLog() {
+  const [f, setF] = useState({ days: 7, source: '', level: '', open: true })
+  const [d, setD] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [expanded, setExpanded] = useState(null)
+  const load = useCallback(() => {
+    const q = new URLSearchParams({ errors: '1', days: String(f.days), ...(f.source ? { source: f.source } : {}), ...(f.level ? { level: f.level } : {}), ...(f.open ? { open: '1' } : {}) })
+    return get(`/api/admin?${q}`)
+      .then(setD)
+      .catch((e) => setMsg(shown(e) || 'Could not load the error log.'))
+  }, [f])
+  useEffect(() => {
+    load()
+  }, [load])
+  const review = async (body) => {
+    try {
+      const r = await post('/api/admin', { op: 'errors.review', ...body })
+      setMsg(`${r.n} marked ${body.reviewed === false ? 'open' : 'reviewed'}.`)
+      load()
+    } catch (e) {
+      setMsg(shown(e) || 'Could not update.')
+    }
+  }
+  const T = d?.totals || {}
+  const copy = (r) =>
+    navigator.clipboard?.writeText(
+      [`${when(r.at)} · ${SRC[r.source] || r.source} · ${r.level}`, `${r.method || ''} ${r.path || ''}`.trim(), `status ${r.status ?? '—'} · ${r.code || '—'}`, r.message && `message: ${r.message}`, r.page && `page: ${r.page}`, r.email && `user: ${r.email}`, r.request_id && `request: ${r.request_id}`, r.detail].filter(Boolean).join('\n'),
+    )
+  return (
+    <section id="errors" className="errlog">
+      <div className="errlog__head">
+        <h2>Error log</h2>
+        <button type="button" className="btn btn--quiet btn--small" onClick={load}>
+          Refresh
+        </button>
+      </div>
+      <ul className="stats">
+        {[
+          ['Open (not reviewed)', T.open],
+          ['Open errors (5xx, crashes, network)', T.open_errors],
+          ['Last 24 hours', T.day],
+          [`All, last ${f.days} days`, T.n],
+        ].map(([k, v]) => (
+          <li key={k} className={k.startsWith('Open errors') && v ? 'is-bad' : ''}>
+            <span className="stats__v">{Number(v || 0).toLocaleString('en-US')}</span>
+            <span className="stats__k">{k}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="errlog__filters">
+        <label>
+          Period{' '}
+          <select value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })}>
+            {[1, 7, 30, 90, 180].map((n) => (
+              <option key={n} value={n}>
+                {n === 1 ? '24 hours' : `${n} days`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Where{' '}
+          <select value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
+            <option value="">All</option>
+            {Object.entries(SRC).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Level{' '}
+          <select value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })}>
+            <option value="">Errors and warnings</option>
+            <option value="error">Errors only</option>
+            <option value="warning">Warnings only (4xx)</option>
+          </select>
+        </label>
+        <label className="errlog__check">
+          <input type="checkbox" checked={f.open} onChange={(e) => setF({ ...f, open: e.target.checked })} /> Open only
+        </label>
+        <button type="button" className="btn btn--quiet btn--small" onClick={() => window.confirm('Mark every open error as reviewed?') && review({ all: true })} disabled={!T.open}>
+          Mark all reviewed
+        </button>
+      </div>
+      {msg && <p className="fine">{msg}</p>}
+
+      {d?.summary?.length > 0 && (
+        <details className="errlog__summary">
+          <summary>Most frequent ({d.summary.length})</summary>
+          <Table rows={d.summary} cols={[['Where', (r) => SRC[r.source] || r.source], ['Level', (r) => r.level], ['Code', (r) => r.code], ['Route / path', (r) => r.where_], ['Count', (r) => r.n], ['Open', (r) => r.open], ['Last', (r) => when(r.last_at)]]} />
+        </details>
+      )}
+
+      {!d ? (
+        <p className="fine">Loading…</p>
+      ) : !d.rows.length ? (
+        <p className="fine">{f.open ? 'No open errors. 🎉' : 'No errors in this period.'}</p>
+      ) : (
+        <div className="tablewrap">
+          <table className="admin__table errlog__table">
+            <thead>
+              <tr>
+                <th scope="col">When</th>
+                <th scope="col">Where</th>
+                <th scope="col">Status</th>
+                <th scope="col">Request</th>
+                <th scope="col">Message</th>
+                <th scope="col">User</th>
+                <th scope="col" />
+              </tr>
+            </thead>
+            <tbody>
+              {d.rows.map((r) => (
+                <Fragment key={r.id}>
+                  <tr className={`errlog__row errlog__row--${r.level} ${r.reviewed_at ? 'is-reviewed' : ''}`} onClick={() => setExpanded(expanded === r.id ? null : r.id)}>
+                    <td>{when(r.at)}</td>
+                    <td>{SRC[r.source] || r.source}</td>
+                    <td>
+                      <span className={`errlog__code errlog__code--${r.level}`}>{r.status ?? '—'}</span> {r.code}
+                    </td>
+                    <td className="errlog__path">
+                      {r.method} {r.path || r.route || '—'}
+                    </td>
+                    <td className="errlog__msg">{r.message || '—'}</td>
+                    <td>{r.email || (r.user_id ? r.user_id.slice(0, 8) : 'signed out')}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="linkbtn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          review({ ids: [r.id], reviewed: !r.reviewed_at })
+                        }}
+                      >
+                        {r.reviewed_at ? 'Reopen' : 'Reviewed'}
+                      </button>
+                    </td>
+                  </tr>
+                  {expanded === r.id && (
+                    <tr className="errlog__detail">
+                      <td colSpan={7}>
+                        <dl>
+                          {[
+                            ['Page', r.page],
+                            ['Shown to the user as', SHOWN[r.shown] || r.shown],
+                            ['Request id', r.request_id],
+                            ['Device · country · language', [r.device, r.country, r.lang].filter(Boolean).join(' · ')],
+                            ['Reviewed', r.reviewed_at && when(r.reviewed_at)],
+                          ]
+                            .filter(([, v]) => v)
+                            .map(([k, v]) => (
+                              <div key={k}>
+                                <dt>{k}</dt>
+                                <dd>{v}</dd>
+                              </div>
+                            ))}
+                        </dl>
+                        {r.detail && <pre className="errlog__pre">{r.detail}</pre>}
+                        <button type="button" className="btn btn--quiet btn--small" onClick={() => copy(r)}>
+                          Copy details
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   )
 }

@@ -33,7 +33,7 @@ async function withRetry(fn, tries = 3) {
       return await fn()
     } catch (e) {
       if (i >= tries || !retriable(e)) throw e
-      e.handled = true // retrying: only the final failure is announced
+      e.handled = e.retrying = true // retrying: only the final failure is announced
       await sleep(3000 * i)
     }
   }

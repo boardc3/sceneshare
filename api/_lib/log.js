@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { waitUntil } from '@vercel/functions'
 import { config } from './config.js'
-import { insertApiLog, visitor } from './db.js'
+import { insertApiLog, insertErrors, visitor } from './db.js'
 
 // "Log everything": every API request becomes one JSON line in Vercel's runtime
 // logs and one row in Neon's api_log (route, status, duration, user, error code).
@@ -34,7 +34,7 @@ export function background(promise) {
   }
 }
 
-export function logRequest(req, { route, status, ms, code = null, meta = null }) {
+export function logRequest(req, { route, status, ms, code = null, meta = null, error = null }) {
   const rec = {
     method: req.method,
     route: String(route || '').slice(0, 60),
@@ -52,4 +52,30 @@ export function logRequest(req, { route, status, ms, code = null, meta = null })
   if (status >= 500) console.error(out)
   else console.log(out)
   background(insertApiLog(rec))
+  // Every failed request also goes to the error log (reviewed on /admin). The
+  // browser's own error reports are logged by their route, not again here.
+  if (status >= 400 && route !== 'errors') {
+    const ua = String(req.headers?.['user-agent'] || '')
+    background(
+      insertErrors([
+        {
+          source: 'server',
+          level: status >= 500 ? 'error' : 'warning',
+          method: req.method,
+          route: rec.route,
+          path: String(req.url || '').split('?')[0].replace(/^\/api\/app$/, `/api/${rec.route}`),
+          status,
+          code: rec.code,
+          message: error?.message || null,
+          detail: [error?.stack, meta ? `meta: ${JSON.stringify(meta).slice(0, 800)}` : null].filter(Boolean).join('\n') || null,
+          userId: rec.userId,
+          visitorId: rec.visitorId,
+          requestId: req.headers?.['x-vercel-id'] || null,
+          ipHash: rec.ipHash,
+          country: rec.country,
+          device: /mobi|iphone|android/i.test(ua) ? 'mobile' : /ipad|tablet/i.test(ua) ? 'tablet' : 'desktop',
+        },
+      ]).catch(() => {}),
+    )
+  }
 }

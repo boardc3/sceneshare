@@ -1,6 +1,7 @@
 // Client side of the API: JSON in and out, the analytics ids (only when the
 // visitor allows analytics), and clear errors.
 import { analyticsHeaders } from './analytics.js'
+import { logError } from './errorLog.js'
 
 export class ApiError extends Error {
   constructor(code, message, status) {
@@ -15,9 +16,11 @@ export class ApiError extends Error {
 // Flows that have their own prompt (plans, terms, sign-in) never announce.
 const OWN_PROMPT = new Set(['plan_limit', 'terms_required', 'sign_in_required'])
 function announce(err) {
-  if (OWN_PROMPT.has(err.code)) return
   setTimeout(() => {
-    if (err.handled) return
+    // Every failure is logged, with how the visitor learned of it.
+    const shownAs = OWN_PROMPT.has(err.code) ? 'prompt' : err.retrying ? 'retried' : err.handled ? 'inline' : 'notice'
+    logError({ source: 'api', method: err.method, path: err.path, status: err.status, code: err.code, message: err.message, requestId: err.requestId, shown: shownAs })
+    if (OWN_PROMPT.has(err.code) || err.handled) return
     window.dispatchEvent(new CustomEvent('ss:api-error', { detail: { code: err.code, status: err.status, message: err.message, path: err.path, method: err.method, requestId: err.requestId, at: new Date().toISOString() } }))
   }, 0)
 }
