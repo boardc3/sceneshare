@@ -56,10 +56,10 @@ export async function changePlan({ tier }) {
   return { billing: d.billing }
 }
 
-// Premium: one Extra (5 more properties for 30 days + 150 re-renders).
-export async function buyExtra(from = 'plan') {
-  track('extra_buy_start', { from })
-  const d = await post('/api/billing', { op: 'extra' })
+// Premium: extra properties, $15 each for 30 days with 30 re-renders each.
+export async function buyExtra(homes = 5, from = 'plan') {
+  track('extra_buy_start', { from, homes })
+  const d = await post('/api/billing', { op: 'extra', homes })
   if (d.url) {
     window.location.assign(d.url) // Stripe Checkout
     return { redirecting: true }

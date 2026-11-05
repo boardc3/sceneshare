@@ -4177,3 +4177,14 @@ body.is-modal {
 .tiers__extra {
   color: var(--glow);
 }
+.extras__buy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 6px 0 14px;
+}
+.stepper--light {
+  border-color: var(--line);
+  color: var(--ink);
+}

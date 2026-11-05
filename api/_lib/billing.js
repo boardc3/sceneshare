@@ -6,8 +6,8 @@ import { ApiError } from './http.js'
 
 // Plans (Chris, 2026-11-04): a 14-day free trial, then Entry ($49/month, 2 homes)
 // or Premium ($99/month, 5 homes). Yearly is 10× monthly. Premium accounts buy
-// Extras as they need them — not a plan: $75 each for 5 more property slots for
-// 30 days plus 150 re-render credits that never expire; some agents buy ten a year. Every rendered image costs one credit; a take the
+// extra properties as they need them — not a plan: $15 per property slot for 30
+// days, each with 30 re-render credits that never expire (5 for $75). Every rendered image costs one credit; a take the
 // alignment check throws away and refires is on us. Credits reset monthly; bought
 // credit packs never expire and are used after the allotment. Limits are checked
 // on the server; the browser only displays them.
@@ -19,7 +19,8 @@ export const PLANS = {
   premium: { homes: 5, credits: 300, emailsPerHome: null, designsPerHome: null },
   none: { homes: 0, credits: 0, emailsPerHome: 0, designsPerHome: null },
 }
-export const EXTRA = { homes: 5, credits: 150, days: 30, amount: 7500, currency: 'usd', maxActive: 20 }
+export const EXTRA = { perHome: 1500, creditsPerHome: 30, days: 30, currency: 'usd', maxPerPurchase: 20, maxActiveHomes: 100 }
+const extraHomes = (n) => Math.max(1, Math.min(EXTRA.maxPerPurchase, Math.floor(Number(n) || 5)))
 export const PRICES = {
   currency: 'usd',
   entry: { month: 4900, year: 49000 },
@@ -189,7 +190,7 @@ function limitError(kind, limit, ent) {
       ent.plan === 'entry'
         ? `Entry includes ${limit} homes. Premium includes 5, and more can be added.`
         : ent.plan === 'premium'
-          ? `You’re using all ${limit} property slots. Add an Extra: 5 more properties for 30 days and 150 re-renders, $75.`
+          ? `You’re using all ${limit} property slots. Add extra properties for $15 each (30 days, 30 re-renders each).`
           : `The free trial includes ${limit} homes. Choose a plan to add more.`,
     emails: `The free trial includes ${limit} emailed shares per home. Choose a plan, or copy the link instead.`,
     credits: `You’ve used all ${limit} render credits for this ${ent.plan === 'trial' ? 'trial' : 'month'}. Buy more credits to keep rendering.`,
@@ -308,7 +309,7 @@ async function customerFor(user, row) {
 }
 
 // One Stripe product per thing sold, found by metadata (created the first time).
-const PRODUCT_NAMES = { entry: 'Sceneshare Entry', premium: 'Sceneshare Premium', extra: 'Sceneshare Extra · 5 properties for 30 days + 150 re-renders' }
+const PRODUCT_NAMES = { entry: 'Sceneshare Entry', premium: 'Sceneshare Premium', extra: 'Sceneshare extra property · 30 days + 30 re-renders' }
 const productCache = new Map()
 export async function productFor(key) {
   if (productCache.has(key)) return productCache.get(key)
@@ -361,36 +362,38 @@ export async function changeSubscription(user, { tier }) {
 
 // ---------------------------------------------------------------- Extras (Premium)
 
-async function assertCanBuyExtra(user) {
+async function assertCanBuyExtra(user, homes) {
   const ent = entitlement(await getBillingRow(user.id), user)
-  if (ent.plan !== 'premium' || ent.source === 'admin' || ent.unlimited) throw new ApiError(400, 'premium_only', 'Extras are for Premium accounts. Switch to Premium to add properties.')
-  const now = await activeExtras(user.id, modeKey(ent.mode))
-  if (now.length >= EXTRA.maxActive) throw new ApiError(400, 'too_many_extras', `You have ${now.length} Extras running. Contact us for more.`)
+  if (ent.plan !== 'premium' || ent.source === 'admin' || ent.unlimited) throw new ApiError(400, 'premium_only', 'Extra properties are for Premium accounts. Switch to Premium to add properties.')
+  const now = (await activeExtras(user.id, modeKey(ent.mode))).reduce((n, r) => n + r.homes, 0)
+  if (now + homes > EXTRA.maxActiveHomes) throw new ApiError(400, 'too_many_extras', `You have ${now} extra properties running. Contact us for more.`)
   return ent
 }
 
-export async function previewBuyExtra(user) {
-  await assertCanBuyExtra(user)
+export async function previewBuyExtra(user, n) {
+  const homes = extraHomes(n)
+  await assertCanBuyExtra(user, homes)
   const id = `prev_${crypto.randomUUID()}`
-  await addExtra(user.id, { id, homes: EXTRA.homes, credits: EXTRA.credits, expiresAt: new Date(Date.now() + EXTRA.days * 864e5).toISOString(), mode: 'preview', ref: 'extra' })
-  await recordBillingEvent({ id, source: 'preview', type: 'extra', userId: user.id, data: { homes: EXTRA.homes, credits: EXTRA.credits, days: EXTRA.days } })
+  await addExtra(user.id, { id, homes, credits: homes * EXTRA.creditsPerHome, expiresAt: new Date(Date.now() + EXTRA.days * 864e5).toISOString(), mode: 'preview', ref: 'extra' })
+  await recordBillingEvent({ id, source: 'preview', type: 'extra', userId: user.id, data: { homes, credits: homes * EXTRA.creditsPerHome, days: EXTRA.days } })
 }
 
-export async function extraCheckout(user, origin) {
-  await assertCanBuyExtra(user)
+export async function extraCheckout(user, n, origin) {
+  const homes = extraHomes(n)
+  await assertCanBuyExtra(user, homes)
   const row = await getBillingRow(user.id)
   const customer = await customerFor(user, row)
   const s = await stripe('POST', 'checkout/sessions', {
     mode: 'payment',
     customer,
     client_reference_id: user.id,
-    line_items: { 0: { quantity: 1, price_data: { currency: EXTRA.currency, unit_amount: EXTRA.amount, product: await productFor('extra') } } },
-    payment_intent_data: { metadata: { userId: user.id, kind: 'extra' } },
-    metadata: { userId: user.id, kind: 'extra' },
+    line_items: { 0: { quantity: homes, price_data: { currency: EXTRA.currency, unit_amount: EXTRA.perHome, product: await productFor('extra') } } },
+    payment_intent_data: { metadata: { userId: user.id, kind: 'extra', homes: String(homes) } },
+    metadata: { userId: user.id, kind: 'extra', homes: String(homes) },
     success_url: `${origin}/plan?extra=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/plan?extra=cancel`,
   })
-  await recordBillingEvent({ id: `co_${s.id}`, source: 'stripe', type: 'extra_checkout_started', userId: user.id, data: { session: s.id } })
+  await recordBillingEvent({ id: `co_${s.id}`, source: 'stripe', type: 'extra_checkout_started', userId: user.id, data: { homes, session: s.id } })
   return s.url
 }
 
@@ -428,7 +431,8 @@ export async function applyCreditSession(userId, session) {
   if (session?.payment_status !== 'paid') return false
   if (session?.metadata?.kind === 'extra') {
     const paidAt = (session.created ? session.created * 1000 : Date.now())
-    return addExtra(userId, { id: `cs_${session.id}`, homes: EXTRA.homes, credits: EXTRA.credits, expiresAt: new Date(paidAt + EXTRA.days * 864e5).toISOString(), mode: session.livemode ? 'live' : 'test', ref: session.id })
+    const homes = extraHomes(session.metadata.homes)
+    return addExtra(userId, { id: `cs_${session.id}`, homes, credits: homes * EXTRA.creditsPerHome, expiresAt: new Date(paidAt + EXTRA.days * 864e5).toISOString(), mode: session.livemode ? 'live' : 'test', ref: session.id })
   }
   if (session?.metadata?.kind !== 'credits') return false
   const pack = CREDIT_PACKS[session.metadata.pack]

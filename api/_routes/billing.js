@@ -8,7 +8,7 @@ import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 // GET  /api/billing[?propertyId=…][&sync=1]   the account's plan, limits, usage and days left
 // POST /api/billing { op: 'checkout', tier: 'entry'|'premium', interval: 'month'|'year' }  → { url } (Stripe) or the new plan (preview)
 // POST /api/billing { op: 'change', tier }                         switch tier on an active subscription (prorated)
-// POST /api/billing { op: 'extra' }                                Premium: buy an Extra (5 properties for 30 days + 150 re-renders)
+// POST /api/billing { op: 'extra', homes }                         Premium: extra properties, $15 each for 30 days + 30 re-renders each
 // POST /api/billing { op: 'credits', pack: 'c100'|'c500' }        → { url } (Stripe) or the new balance (preview)
 // GET  /api/billing?session=cs_…                                  apply a paid credit purchase on return from Checkout
 // POST /api/billing { op: 'portal' }                               → { url } Stripe's billing portal
@@ -102,11 +102,11 @@ export default route(
     }
     if (op === 'extra') {
       if (mode === 'preview') {
-        await previewBuyExtra(user)
-        await logSubmission({ user, kind: 'extra_buy', meta: { mode } })
+        await previewBuyExtra(user, body.homes)
+        await logSubmission({ user, kind: 'extra_buy', meta: { mode, homes: body.homes } })
         return send(res, 200, { ok: true, preview: true, billing: await billingFor(user) })
       }
-      const url = await extraCheckout(user, origin)
+      const url = await extraCheckout(user, body.homes, origin)
       await logSubmission({ user, kind: 'extra_checkout', meta: { mode } })
       return send(res, 200, { ok: true, url })
     }

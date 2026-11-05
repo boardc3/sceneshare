@@ -43,7 +43,7 @@ export default function Plan() {
     const creditsBack = q.get('credits')
     const extraBack = q.get('extra')
     loadBilling({ sync: true, session: creditsBack === 'success' || extraBack === 'success' ? q.get('session_id') : null }).then((nb) => {
-      if (extraBack === 'success') setMsg({ ok: true, text: nb?.extras?.active ? t('extra.added') : t('credits.processing') })
+      if (extraBack === 'success') setMsg({ ok: true, text: nb?.extras?.active ? t('extra.addedAny') : t('credits.processing') })
       if (extraBack === 'cancel') setMsg({ ok: false, text: t('credits.canceled') })
       if (extraBack) navigate('/plan#extras', { replace: true })
       if (creditsBack === 'success') {
@@ -135,7 +135,7 @@ export default function Plan() {
             <p className="plan__label">{t('plan.current')}</p>
             <h2 id="p-current">
               {b.plan === 'none' ? planName : `Sceneshare ${planName}`}
-              {b.extras?.active > 0 && <span className="plan__addons"> {t(b.extras.active === 1 ? 'extra.activeOne' : 'extra.activeMany', { n: b.extras.active })}</span>}
+              {b.extras?.homes > 0 && <span className="plan__addons"> {t('extra.activeHomes', { n: b.extras.homes })}</span>}
             </h2>
           </div>
           {big != null && (
@@ -190,35 +190,7 @@ export default function Plan() {
         <Tiers b={b} prices={prices} plans={plans} busy={busy} run={run} managed={managed} />
       )}
 
-      {b.plan === 'premium' && b.source !== 'admin' && extra && (
-        <section className="settings__card extras" id="extras" aria-labelledby="p-extras">
-          <div className="plan__head">
-            <div>
-              <p className="plan__label">{t('extra.label')}</p>
-              <h2 id="p-extras">{t('extra.title')}</h2>
-            </div>
-            <div className="plan__days">
-              <strong>{b.extras?.active || 0}</strong>
-              <span>{t('extra.running')}</span>
-            </div>
-          </div>
-          <p>{t('extra.body', { homes: extra.homes, credits: extra.credits, days: extra.days, price: money(extra.amount, lang) })}</p>
-          {b.extras?.items?.length > 0 && (
-            <ul className="extras__list">
-              {b.extras.items.map((x) => (
-                <li key={x.id}>
-                  <span>{t('extra.item', { homes: x.homes })}</span>
-                  <span className="fine">{t('extra.until', { date: day(x.expiresAt, lang) })}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <button type="button" className="btn btn--glow" disabled={!!busy} onClick={() => run('extra', () => buyExtra(), () => t('extra.added'))}>
-            {busy === 'extra' ? t('auth.working') : t('extra.buy', { price: money(extra.amount, lang) })}
-          </button>
-          <p className="fine">{managed ? t('plan.secure') : t('credits.previewNote')}</p>
-        </section>
-      )}
+      {b.plan === 'premium' && b.source !== 'admin' && extra && <Extras b={b} extra={extra} busy={busy} run={run} managed={managed} />}
 
       {b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && (
         <section className="settings__card credits" id="credits" aria-labelledby="p-credits">
@@ -328,6 +300,55 @@ function Tiers({ b, prices, plans, busy, run, managed }) {
         })}
       </div>
       <p className="fine">{t(managed ? 'plan.secure' : 'plan.previewNote')}</p>
+    </section>
+  )
+}
+
+// Premium: buy extra property slots ($15 each, 30 days, 30 re-renders each).
+function Extras({ b, extra, busy, run, managed }) {
+  const { t, lang } = useI18n()
+  const [n, setN] = useState(5)
+  const total = n * extra.perHome
+  return (
+    <section className="settings__card extras" id="extras" aria-labelledby="p-extras">
+      <div className="plan__head">
+        <div>
+          <p className="plan__label">{t('extra.label')}</p>
+          <h2 id="p-extras">{t('extra.title')}</h2>
+        </div>
+        <div className="plan__days">
+          <strong>{b.extras?.homes || 0}</strong>
+          <span>{t('extra.running')}</span>
+        </div>
+      </div>
+      <p>{t('extra.body', { price: money(extra.perHome, lang), days: extra.days, credits: extra.creditsPerHome })}</p>
+      {b.extras?.items?.length > 0 && (
+        <ul className="extras__list">
+          {b.extras.items.map((x) => (
+            <li key={x.id}>
+              <span>{t('extra.item', { homes: x.homes })}</span>
+              <span className="fine">{t('extra.until', { date: day(x.expiresAt, lang) })}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="extras__buy">
+        <span className="addon__label">{t('extra.howMany')}</span>
+        <div className="stepper stepper--light">
+          <button type="button" aria-label={t('extra.less')} disabled={n <= 1} onClick={() => setN((x) => Math.max(1, x - 1))}>
+            −
+          </button>
+          <output aria-live="polite">{n}</output>
+          <button type="button" aria-label={t('extra.more')} disabled={n >= extra.maxPerPurchase} onClick={() => setN((x) => Math.min(extra.maxPerPurchase, x + 1))}>
+            +
+          </button>
+        </div>
+        <span className="fine">{t('extra.gets', { homes: n, credits: n * extra.creditsPerHome, days: extra.days })}</span>
+      </div>
+      <button type="button" className="btn btn--glow" disabled={!!busy} onClick={() => run('extra', () => buyExtra(n), () => t('extra.added', { n }))}>
+        {busy === 'extra' ? t('auth.working') : t('extra.buy', { n, price: money(total, lang) })}
+      </button>
+      <p className="fine">{managed ? t('plan.secure') : t('credits.previewNote')}</p>
     </section>
   )
 }
