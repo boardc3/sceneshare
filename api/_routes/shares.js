@@ -69,5 +69,6 @@ export default route(
     res._meta = { propertyId: row.id, shareId: id, channel, recipients: recipients.length, sent }
     send(res, 200, { ok: true, id, url, sent })
   },
-  { name: 'shares', limit: { hour: 60, day: 300 } },
+  // Sending shares is limited tightly; the owner's own stats reads are not the same thing.
+  { name: 'shares', limit: { POST: { hour: 60, day: 300 }, GET: { hour: 1200, day: 6000 } } },
 )

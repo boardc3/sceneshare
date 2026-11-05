@@ -824,13 +824,14 @@ export function insertApiLog(r) {
 }
 
 // Requests in the last `minutes` for this caller on this route (rate limits).
-export async function recentRequests({ route, ipHash, userId, minutes }) {
+export async function recentRequests({ route, ipHash, userId, minutes, method = null }) {
   const s = await ensure()
   if (!s) return 0
   const since = new Date(Date.now() - minutes * 60000).toISOString()
+  const m = method || '%'
   const rows = userId
-    ? await s`select count(*)::int as n from api_log where user_id = ${userId} and route = ${route} and at > ${since}`
-    : await s`select count(*)::int as n from api_log where ip_hash = ${ipHash} and route = ${route} and at > ${since}`
+    ? await s`select count(*)::int as n from api_log where user_id = ${userId} and route = ${route} and at > ${since} and coalesce(method, '') like ${m}`
+    : await s`select count(*)::int as n from api_log where ip_hash = ${ipHash} and route = ${route} and at > ${since} and coalesce(method, '') like ${m}`
   return rows[0]?.n || 0
 }
 
