@@ -34,6 +34,11 @@ export default function Share({ id }) {
     const s = new URLSearchParams(window.location.search).get('s')
     get(`/api/properties?id=${id}&view=1&lang=${lang}${s && /^[a-z0-9]{10}$/.test(s) ? `&s=${s}` : ''}`)
       .then((d) => {
+        if (d.offline) {
+          setGated({ ...(d.sharer || {}), offline: true, place: d.address || null })
+          track('share_offline_view', null, { propertyId: id })
+          return
+        }
         if (d.gated) {
           setGated(d.sharer || {})
           track('share_gated_view', null, { propertyId: id })
@@ -205,16 +210,16 @@ function Gated({ id, sharer }) {
   const [state, setState] = useState('idle') // idle | sending | sent | error
   const name = sharer.name || t('terms.gate.someone')
   useEffect(() => {
-    document.title = `${t('terms.gate.title')} — Sceneshare`
-  }, [t])
+    document.title = `${t(sharer.offline ? 'offline.title' : 'terms.gate.title')} — Sceneshare`
+  }, [t, sharer.offline])
   const ask = async (e) => {
     e.preventDefault()
     setState('sending')
     try {
       const s = new URLSearchParams(window.location.search).get('s')
-      await post('/api/terms', { propertyId: id, email: isEmail(email.trim()) ? email.trim() : undefined, s: s || undefined })
+      await post('/api/terms', { propertyId: id, email: isEmail(email.trim()) ? email.trim() : undefined, s: s || undefined, reason: sharer.offline ? 'renew' : undefined })
       setState('sent')
-      track('terms_request', { withEmail: isEmail(email.trim()) }, { propertyId: id })
+      track(sharer.offline ? 'renew_request' : 'terms_request', { withEmail: isEmail(email.trim()) }, { propertyId: id })
     } catch {
       setState('error')
     }
@@ -222,11 +227,17 @@ function Gated({ id, sharer }) {
   return (
     <main id="main" className="page page--center gated">
       <p className="page__eyebrow">Sceneshare</p>
-      <h1 className="page__title">{t('terms.gate.title')}</h1>
-      <p>{t('terms.gate.body', { name })}</p>
+      <h1 className="page__title">{t(sharer.offline ? 'offline.title' : 'terms.gate.title')}</h1>
+      <p>{sharer.offline ? t('offline.body', { name }) : t('terms.gate.body', { name })}</p>
+      {sharer.offline && sharer.email && (
+        <p>
+          {t('offline.contact')}{' '}
+          <a href={`mailto:${sharer.email}`}>{sharer.email}</a>
+        </p>
+      )}
       {state === 'sent' ? (
         <p className="plan__msg" role="status">
-          {t('terms.gate.sent', { name })}
+          {t(sharer.offline ? 'offline.sent' : 'terms.gate.sent', { name })}
         </p>
       ) : (
         <form className="gated__form" onSubmit={ask}>
@@ -235,7 +246,7 @@ function Gated({ id, sharer }) {
             <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
           </label>
           <button type="submit" className="btn btn--glow" disabled={state === 'sending'}>
-            {state === 'sending' ? t('auth.working') : t('terms.gate.cta', { who: sharer.email ? `${name} (${sharer.email})` : name })}
+            {state === 'sending' ? t('auth.working') : sharer.offline ? t('offline.cta', { who: name }) : t('terms.gate.cta', { who: sharer.email ? `${name} (${sharer.email})` : name })}
           </button>
           {state === 'error' && <p className="field__error">{t('err.generic')}</p>}
         </form>

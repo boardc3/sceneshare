@@ -157,8 +157,10 @@ function Terms() {
         </li>
         <li>
           <strong>Cancelling.</strong> You can cancel online at any time from the Plan and billing page, with no need to contact us. Cancelling stops the next
-          renewal; your plan stays on until the end of the period you have paid for. After that your homes, designs and share links are kept, but you cannot add
-          homes, render or send shares until you choose a plan again.
+          renewal; your plan stays on until the end of the period you have paid for. After that your homes and designs are kept, but you cannot add
+          homes, render or send shares until you choose a plan again. Your share links stay online for <strong>14 days</strong> after a plan (or the free trial)
+          ends; after that, people who open them see a page saying the home is offline, with the name and email address of the account that shared it so they can
+          reach you. Choosing a plan brings the pages back with the same links.
         </li>
         <li>
           <strong>Refunds.</strong> Payments are not refundable for partial periods, except where the law requires it or we decide otherwise. If something went
@@ -169,12 +171,14 @@ function Terms() {
           renewal payment fails, Stripe may retry it, and your plan may end if the payment cannot be collected.
         </li>
         <li>
-          <strong>Limits and render credits.</strong> Each plan includes a number of homes (the trial and Entry: 2; Premium: 5). Each
+          <strong>Limits and render credits.</strong> Each plan includes a number of <strong>new homes each month</strong> (the trial: 2 in total; Entry: 2 a
+          month; Premium: 5 a month), counted over the same monthly cycle as render credits. Homes you have added stay in your account from month to month; removing
+          one does not give back its place for that month. Each
           rendered image (a restyle, a clean-up or a requested change) uses one render credit; automatic retries we run to keep a room aligned do not. Each plan
           includes an allotment of credits (the trial: 50; Entry: 150 a month; Premium: 300 a month), which resets at the start of each monthly cycle and does
           not roll over. Changing plan part-way through a period is prorated by our payment provider. Premium accounts can buy <strong>extra properties</strong>, one-off
-          purchases of $15 per property slot that each last 30 days and come with 30 credits that do not expire; when a slot ends, homes already added are
-          kept, but no new homes can be added beyond the plan's limit. Extra credits can also be
+          purchases of $15 per property slot that each last 30 days and come with 30 credits that do not expire; each adds one new home to the month's allowance while it lasts,
+          and when it ends the home stays in your account. Extra credits can also be
           bought in packs; bought credits do not expire while your account is open, are used only after the monthly allotment, and are not refundable except where
           the law requires. A render that fails returns its credit.
         </li>

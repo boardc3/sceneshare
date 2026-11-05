@@ -59,11 +59,15 @@ Leaflet/Esri rule for this project, at Chris's request (2026-11-04).
 ## Plans and billing
 
 New accounts get a 7-day free trial (2 homes, 50 render credits, 10 emailed shares per home).
-Entry: $49/month or $490/year, 2 homes, 150 render credits a month.
-Premium: $99/month or $990/year, 5 homes, 300 render credits a month; each add-on
-($75/month or $750/year) adds 5 homes and 150 credits.
+Entry: $49/month or $490/year, 2 new homes a month, 150 render credits a month.
+Premium: $99/month or $990/year, 5 new homes a month, 300 render credits a month; extra
+properties are one-off purchases at $15 each (30 days, 30 re-renders each).
+New-home allowances count homes added in the billing month (the same cycle as credits);
+homes already added stay, and deleting one does not free its place.
 One credit = one rendered image; credit packs (100 for $15, 500 for $60) never expire.
-After the trial with no plan, existing share links keep working but nothing new can be added.
+After the trial or a plan ends, share links stay online for 14 days; then buyers see an
+"offline" page with the agent's email and a button that emails the agent to bring it back.
+Choosing a plan brings every page back with the same links.
 Admins (`ADMIN_EMAILS`) are always Premium, unmetered. Limits are enforced on the server
 (`api/_lib/billing.js`) and answered with HTTP 402 `plan_limit`, which opens the plan prompt.
 The nav credit meter and `/plan` show plan, credits, homes and days left. Stripe products

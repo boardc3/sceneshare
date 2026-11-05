@@ -1,5 +1,6 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import ApiErrors from './components/ApiErrors.jsx'
+import PagesNotice from './components/PagesNotice.jsx'
 import { AuthModal, CookieBanner, Footer, Nav, TermsPrompt, UpgradePrompt } from './components/Chrome.jsx'
 import { I18n, translate, useI18n } from './i18n.js'
 import { initAnalytics, pageView, reportError } from './lib/analytics.js'
@@ -127,6 +128,7 @@ function Pages() {
       </a>
       <Nav tone={m.page === 'home' ? 'dark' : 'light'} />
       <ErrorBoundary resetKey={path}>
+        {['studio', 'account', 'insights', 'own'].includes(m.page) && <PagesNotice />}
         <Suspense fallback={<Loading />}>
           {m.page === 'home' && <Landing />}
           {m.page === 'own' && <Own />}

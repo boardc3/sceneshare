@@ -1,6 +1,6 @@
 import { addDesign, BASE_MODES, normalizeProperty, publicView, removeDesign, removePhoto, setBase, setDesign, setHidden, pickVersion } from '../shared/model.js'
 import { sessionUser } from './_lib/auth.js'
-import { assertCanAddDesign } from './_lib/billing.js'
+import { assertCanAddDesign, ownerPagesStatus } from './_lib/billing.js'
 import { config, TERMS_VERSION } from './_lib/config.js'
 import { deleteDesignRows, deleteProperty, insertPhotoRows, listProperties, logSubmission, mutateProperty, ownerAccepted, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
@@ -45,6 +45,16 @@ async function read(req, res) {
     const email = row.owner_account_email || row.owner_email || null
     res._meta = { propertyId: q.id, gated: true }
     return send(res, 200, { ok: true, owner: false, gated: true, sharer: { name: row.owner_name || (email ? email.split('@')[0] : null), email } })
+  }
+  // 14 days after the owner's plan ends, buyers see an "offline" page with the agent's
+  // email and a way to ask them to bring it back; the owner still sees everything.
+  if (!owner) {
+    const pages = await ownerPagesStatus(row.owner_user_id)
+    if (!pages.live) {
+      const email = row.owner_account_email || row.owner_email || null
+      res._meta = { propertyId: q.id, offline: true }
+      return send(res, 200, { ok: true, owner: false, offline: true, sharer: { name: row.owner_name || (email ? email.split('@')[0] : null), email }, address: row.data?.address?.city ? `${row.data.address.city}, ${row.data.address.state || ''}`.trim() : null })
+    }
   }
   const p = { ...normalizeProperty(row.data), updatedAt: row.updated_at, shareViews: row.share_views }
   // Homes saved before the richer, classified places get them on first view.

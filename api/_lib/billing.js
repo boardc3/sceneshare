@@ -143,8 +143,32 @@ export async function billingFor(user, propertyId = null) {
   const ent = entitlement(row, user)
   const extras = await extrasFor(user, ent)
   const limits = limitsFor(ent, extras.homes)
-  const [usage, credits] = await Promise.all([usageFor(user.id, propertyId), creditsFor(user, ent, limits)])
-  return { ...ent, limits, usage, credits, extras }
+  const cyc = creditCycle(ent)
+  const [usage, credits] = await Promise.all([usageFor(user.id, propertyId, cyc.start.toISOString()), creditsFor(user, ent, limits)])
+  return { ...ent, limits, usage: { ...usage, homesResetAt: cyc.next.toISOString() }, credits, extras, pages: pagesStatus(ent, row) }
+}
+
+// Share pages stay up for 14 days after a plan (or the trial) ends, then show an
+// "offline" page with the agent's email (Chris, 2026-11-05).
+export const PAGES_GRACE_DAYS = 14
+export function pagesStatus(ent, row) {
+  if (ent.plan !== 'none') return { live: true, endedAt: null, until: null }
+  const created = row?.created_at ? new Date(row.created_at).getTime() : Date.now()
+  const trialEnd = created + TRIAL_DAYS * 864e5
+  const paidEnd = row?.period_end ? new Date(row.period_end).getTime() + GRACE_MS : 0
+  const ended = Math.max(trialEnd, paidEnd)
+  const until = ended + PAGES_GRACE_DAYS * 864e5
+  return { live: Date.now() < until, endedAt: new Date(ended).toISOString(), until: new Date(until).toISOString() }
+}
+
+// For a share page: are its owner's pages still up? Owners without an account row
+// (homes from before accounts) stay up.
+export async function ownerPagesStatus(ownerUserId) {
+  if (!ownerUserId || billingState() === 'off') return { live: true }
+  const row = await getBillingRow(ownerUserId)
+  if (!row) return { live: true }
+  const ent = entitlement(row, { email: String(row.email || '').toLowerCase(), emailVerified: Boolean(row.email_verified) })
+  return pagesStatus(ent, row)
 }
 
 export async function creditsOnly(user) {
@@ -185,12 +209,12 @@ const PLAN_NAME = { trial: 'free trial', entry: 'Entry', premium: 'Premium', non
 
 function limitError(kind, limit, ent) {
   const msg = {
-    expired: 'Your free trial has ended. Choose Entry or Premium to keep adding homes, rendering and sharing. Your existing share links keep working.',
+    expired: `Your plan has ended. Choose Entry or Premium to keep adding homes, rendering and sharing. Your share links stay online for ${PAGES_GRACE_DAYS} days after a plan ends.`,
     homes:
       ent.plan === 'entry'
-        ? `Entry includes ${limit} homes. Premium includes 5, and more can be added.`
+        ? `Entry includes ${limit} new homes a month, and you’ve added them this month. Premium includes 5 a month.`
         : ent.plan === 'premium'
-          ? `You’re using all ${limit} property slots. Add extra properties for $15 each (30 days, 30 re-renders each).`
+          ? `You’ve added all ${limit} new homes for this month. Add extra properties for $15 each (30 days, 30 re-renders each), or wait for next month’s.`
           : `The free trial includes ${limit} homes. Choose a plan to add more.`,
     emails: `The free trial includes ${limit} emailed shares per home. Choose a plan, or copy the link instead.`,
     credits: `You’ve used all ${limit} render credits for this ${ent.plan === 'trial' ? 'trial' : 'month'}. Buy more credits to keep rendering.`,

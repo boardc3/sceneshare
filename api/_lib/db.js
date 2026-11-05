@@ -375,6 +375,10 @@ async function migrate(s) {
   // One email to several people becomes one share per person (own tracked link),
   // grouped by batch_id so the send still reads as one action.
   await s`alter table shares add column if not exists batch_id text`
+  // Every home an account adds, kept even if the home is later deleted: plans allow N
+  // new homes per billing month, and deleting one doesn't give its place back.
+  await s`create table if not exists home_adds (user_id text not null, property_id text not null, at timestamptz not null default now(), primary key (user_id, property_id))`
+  await s`insert into home_adds (user_id, property_id, at) select owner_user_id, id, created_at from properties where owner_user_id is not null on conflict do nothing`
   await s`create index if not exists shares_user_idx on shares (user_id, created_at desc)`
   await s`alter table shares add column if not exists tracked boolean not null default true`
 
@@ -392,7 +396,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 13
+const SCHEMA_VERSION = 14
 
 async function upToDate(s) {
   try {
@@ -555,6 +559,7 @@ export async function upsertProperty(p, { user, origin = 'address', lang = null,
       data = properties.data || ${j(located)}::jsonb, rev = properties.rev + 1, updated_at = now()
     where properties.owner_user_id = ${user.id}
     returning id`
+  if (rows.length) await s`insert into home_adds (user_id, property_id) values (${user.id}, ${p.id}) on conflict do nothing`
   return { ok: rows.length > 0 }
 }
 
@@ -566,6 +571,7 @@ export async function createOwnProperty(id, { user, lang = null }) {
   await s`insert into properties (id, owner_email, owner_user_id, data, origin, lang)
     values (${id}, ${user.email}, ${user.id}, ${j(snapshot)}::jsonb, 'own', ${lang})
     on conflict (id) do nothing`
+  await s`insert into home_adds (user_id, property_id) values (${user.id}, ${id}) on conflict do nothing`
 }
 
 export async function propertyRow(id) {
@@ -1297,7 +1303,7 @@ const PLAN_COLS = { plan: 'plan', status: 'plan_status', source: 'plan_source', 
 export async function getBillingRow(userId) {
   const s = await ensure()
   if (!s) return null
-  const [row] = await s`select id, email, created_at, plan, plan_status, plan_source, plan_interval, period_end, cancel_at_period_end,
+  const [row] = await s`select id, email, email_verified, created_at, plan, plan_status, plan_source, plan_interval, period_end, cancel_at_period_end,
       stripe_customer_id, stripe_subscription_id, plan_updated_at, coalesce(plan_addons, 0)::int as plan_addons from users where id = ${userId}`
   return row || null
 }
@@ -1434,13 +1440,17 @@ export async function addCredits(userId, { id, credits, mode, kind = 'purchase',
   return rows.length > 0
 }
 
-export async function usageFor(userId, propertyId = null) {
+// homes: homes added since the billing cycle began (plans allow N new homes a month,
+// Chris 2026-11-05); homesTotal: every home the account has.
+export async function usageFor(userId, propertyId = null, cycleStart = null) {
   const s = await ensure()
-  if (!s) return { homes: 0, runs30d: 0 }
+  if (!s) return { homes: 0, homesTotal: 0, runs30d: 0 }
   const since = new Date(Date.now() - 30 * 864e5).toISOString()
-  const [h] = await s`select count(*)::int as n from properties where owner_user_id = ${userId}`
+  const from = cycleStart || since
+  const [h] = await s`select (select count(*) from properties where owner_user_id = ${userId})::int as n,
+      (select count(*) from home_adds where user_id = ${userId} and at >= ${from})::int as cycle`
   const [r] = await s`select count(*)::int as n from designs where user_id = ${userId} and created_at > ${since}`
-  const out = { homes: h?.n || 0, runs30d: r?.n || 0 }
+  const out = { homes: h?.cycle || 0, homesTotal: h?.n || 0, runs30d: r?.n || 0 }
   if (propertyId) {
     // Whole-house designs only; single-photo edits carry a scope.
     const [d] = await s`select count(*)::int as n from properties, jsonb_array_elements(coalesce(data->'designs', '[]'::jsonb)) as dz

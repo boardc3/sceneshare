@@ -76,3 +76,34 @@ export async function sendTermsRequestEmail({ to, ownerName, address, acceptUrl,
     return false
   }
 }
+
+// A buyer opened a share link after the owner's plan ended (pages are offline 14
+// days after): tell the owner, with a way to bring the page back.
+export async function sendRenewRequestEmail({ to, ownerName, address, renewUrl, requesterEmail = null }) {
+  const who = requesterEmail ? esc(requesterEmail) : 'Someone'
+  const subject = `${requesterEmail || 'Someone'} tried to see ${address || 'your home'} on Sceneshare`
+  const html = `<div style="font-family:Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#16212b">
+  <p style="font-size:16px;line-height:1.5">Hi${ownerName ? ` ${esc(ownerName)}` : ''},</p>
+  <p style="font-size:16px;line-height:1.5">${who} opened the link you shared for <strong>${esc(address || 'your home')}</strong>, but the page is offline because your Sceneshare plan has ended.</p>
+  <p style="font-size:16px;line-height:1.5">Choose a plan and every home you’ve shared comes back online, with the same links.</p>
+  <p><a href="${esc(renewUrl)}" style="display:inline-block;background:#e8a548;color:#16212b;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:600">Bring my pages back</a></p>
+  ${requesterEmail ? `<p style="font-size:14px;color:#56656c">You can reply to this email to reach ${esc(requesterEmail)}.</p>` : ''}
+  <p style="font-size:12px;color:#56656c">You received this because a home was shared from your Sceneshare account.</p></div>`
+  const text = `${requesterEmail || 'Someone'} opened the link you shared for ${address || 'your home'}, but the page is offline because your Sceneshare plan has ended.\n\nChoose a plan and your pages come back online with the same links:\n${renewUrl}\n`
+  try {
+    const r = await fetchWithTimeout(
+      'https://api.resend.com/emails',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.mailKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: config.mailFrom, to: [to], subject, html, text, ...(requesterEmail ? { reply_to: requesterEmail } : {}) }),
+      },
+      15000,
+    )
+    if (!r.ok) console.error(JSON.stringify({ t: 'mail', msg: 'renew request send failed', status: r.status }))
+    return r.ok
+  } catch (e) {
+    console.error(JSON.stringify({ t: 'mail', msg: 'renew request send failed', err: e.message }))
+    return false
+  }
+}
