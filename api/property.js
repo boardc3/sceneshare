@@ -41,10 +41,11 @@ export default route(
 
     const id = existing || newId()
     const [parcel, pois] = await Promise.all([parcelFor(addr), nearby(addr.lat, addr.lng, lang)])
-    const property = { id, createdAt: new Date().toISOString(), address: addr, parcel, pois, poisV: POI_VERSION, photos: [], facts: null, listing: null, designs: [] }
-    const saved = await upsertProperty(property, { user, origin: existing ? 'own' : 'address', lang })
+    const ownOnly = body.ownOnly === true
+    const property = { id, createdAt: new Date().toISOString(), address: addr, parcel, pois, poisV: POI_VERSION, photos: [], facts: null, listing: null, designs: [], listingChecked: ownOnly, ownOnly }
+    const saved = await upsertProperty(property, { user, origin: existing ? 'own' : 'address', lang, ownOnly })
     if (!saved.ok) throw new ApiError(403, 'not_owner', 'Only the account that saved this home can change it.')
-    await logSubmission({ user, kind: 'address_search', address: addr.formatted, propertyId: id, lang, meta: { county: addr.county, parcel: Boolean(parcel), pois: pois.length } })
+    await logSubmission({ user, kind: 'address_search', address: addr.formatted, propertyId: id, lang, meta: { county: addr.county, parcel: Boolean(parcel), pois: pois.length, ownOnly } })
     res._meta = { propertyId: id }
     send(res, 200, { ok: true, property })
   },

@@ -534,12 +534,13 @@ export function logSubmission({ user = null, email = null, kind, address = null,
 // ---------------------------------------------------------------- properties
 
 // A home found by address. The searching account owns it.
-export async function upsertProperty(p, { user, origin = 'address', lang = null }) {
+export async function upsertProperty(p, { user, origin = 'address', lang = null, ownOnly = false }) {
   const s = await ensure()
   if (!s) return { ok: true }
   const a = p.address || {}
-  const snapshot = { id: p.id, createdAt: p.createdAt, address: p.address, parcel: p.parcel, pois: p.pois, facts: p.facts ?? null, listing: p.listing ?? null, photos: p.photos || [], designs: [] }
-  const located = { address: p.address, parcel: p.parcel, pois: p.pois, listingChecked: false }
+  // ownOnly: the owner chose to use only their own photos, so no listing lookup.
+  const snapshot = { id: p.id, createdAt: p.createdAt, address: p.address, parcel: p.parcel, pois: p.pois, facts: p.facts ?? null, listing: p.listing ?? null, photos: p.photos || [], designs: [], listingChecked: ownOnly, ownOnly }
+  const located = { address: p.address, parcel: p.parcel, pois: p.pois, listingChecked: ownOnly, ownOnly }
   const rows = await s`insert into properties (
       id, owner_email, owner_user_id, data, origin, formatted_address, street_number, route, unit, city, county, state, zip,
       lat, lng, mapbox_id, parcel_apn, parcel_area_sqft, parcel, pois, lang)

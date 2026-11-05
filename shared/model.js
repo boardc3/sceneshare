@@ -2,7 +2,9 @@
 //
 // property = { id, createdAt, address, parcel, pois, facts, listing, listingChecked,
 //              photos: [photo], designs: [design], featured }
-// photo    = { id, src, width, height, source, credit, caption, hidden, versions: [version] }
+// photo    = { id, src, width, height, source, credit, caption, hidden, versions: [version], base?: designId }
+//            base: a "Make it professional" (cleanup/polish) round whose image of this photo
+//            later restyles start from, instead of the photograph as taken.
 // version  = { id, designId, src, width, height, mode, style, light, feedback,
 //              baseVersionId, model, align, attempts, ms, at }
 // design   = { id, mode: 'redesign' | 'polish' | 'cleanup', style, light, note, createdAt, scope?: [photoId],
@@ -58,11 +60,32 @@ export function normalizeProperty(raw) {
   // A pick must point at a version that still exists.
   const versionIds = new Set(p.photos.flatMap((ph) => ph.versions.map((v) => v.id)))
   for (const d of p.designs) for (const [phId, vId] of Object.entries(d.picks)) if (!versionIds.has(vId)) delete d.picks[phId]
+  // A starting point must still be a finishing round with an image of this photo.
+  for (const ph of p.photos) {
+    const d = ph.base && p.designs.find((x) => x.id === ph.base)
+    if (ph.base && (!d || !BASE_MODES.includes(d.mode) || !d.picks[ph.id])) delete ph.base
+  }
   if (!p.featured || !p.designs.some((d) => d.id === p.featured)) {
     const withPicks = p.designs.filter((d) => Object.keys(d.picks).length)
     p.featured = withPicks.length ? withPicks[withPicks.length - 1].id : null
   }
   return p
+}
+
+export const BASE_MODES = ['cleanup', 'polish']
+
+// The image a restyle of this photo starts from: its chosen professional version, or
+// the photograph as taken. Finishing rounds themselves always start from the photograph.
+export function startingImage(p, photo, designMode) {
+  if (!photo?.base || BASE_MODES.includes(designMode)) return { src: photo?.src, width: photo?.width, height: photo?.height, versionId: null }
+  const d = p.designs.find((x) => x.id === photo.base)
+  const v = d && photo.versions.find((x) => x.id === d.picks[photo.id])
+  return v ? { src: v.src, width: v.width, height: v.height, versionId: v.id } : { src: photo.src, width: photo.width, height: photo.height, versionId: null }
+}
+
+export function setBase(p, photoIds, designId) {
+  const ids = new Set(photoIds)
+  return { ...p, photos: p.photos.map((ph) => (ids.has(ph.id) ? (designId ? { ...ph, base: designId } : (({ base, ...rest }) => rest)(ph)) : ph)) } // eslint-disable-line no-unused-vars
 }
 
 export const visiblePhotos = (p) => (p?.photos || []).filter((ph) => !ph.hidden)
@@ -102,7 +125,11 @@ export function setDesign(p, designId, patch) {
 
 export function removeDesign(p, designId) {
   const designs = p.designs.filter((d) => d.id !== designId)
-  const photos = p.photos.map((ph) => ({ ...ph, versions: ph.versions.filter((v) => v.designId !== designId) }))
+  const photos = p.photos.map((ph) => {
+    const out = { ...ph, versions: ph.versions.filter((v) => v.designId !== designId) }
+    if (out.base === designId) delete out.base // its starting point is gone: back to the photograph
+    return out
+  })
   const next = { ...p, designs, photos }
   if (next.featured === designId) {
     const withPicks = designs.filter((d) => Object.keys(d.picks).length)

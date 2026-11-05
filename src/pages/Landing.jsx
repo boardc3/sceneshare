@@ -23,16 +23,16 @@ export default function Landing() {
 
   // Searching saves the home to an account, so it needs one (Chris, 2026-11-04).
   const onFind = useCallback(
-    async ({ address, placeId, unit }) => {
+    async ({ address, placeId, unit, ownOnly = false }) => {
       setError('')
       track('address_search_start', { signedIn: false, unit: Boolean(unit) })
-      const user = await requireSignIn('search', { type: 'search', address, placeId, unit })
+      const user = await requireSignIn('search', { type: 'search', address, placeId, unit, ownOnly })
       if (!user) return
       setBusy(true)
       try {
-        const d = await post('/api/property', { address, placeId, unit, lang })
+        const d = await post('/api/property', { address, placeId, unit, lang, ownOnly })
         rememberProperty(d.property)
-        track('address_search', { county: d.property.address?.county || null, parcel: Boolean(d.property.parcel) }, { propertyId: d.property.id })
+        track('address_search', { county: d.property.address?.county || null, parcel: Boolean(d.property.parcel), ownOnly }, { propertyId: d.property.id })
         setTarget(d.property.address)
         const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
         setTimeout(() => navigate(`/studio/${d.property.id}`), reduce ? 200 : 2300)
@@ -56,7 +56,7 @@ export default function Landing() {
     if (!ready || resumed.current) return
     resumed.current = true
     const intent = user ? takeIntent() : null
-    if (intent?.type === 'search' && intent.address) onFind({ address: intent.address, placeId: intent.placeId, unit: intent.unit })
+    if (intent?.type === 'search' && intent.address) onFind({ address: intent.address, placeId: intent.placeId, unit: intent.unit, ownOnly: intent.ownOnly })
     if (intent?.type === 'own') navigate('/studio/new')
   }, [ready, user, onFind, navigate])
 

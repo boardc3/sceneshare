@@ -166,6 +166,8 @@ export default route(
       facts: finalFacts || p.facts,
       listing: finalListing,
       listingChecked: true,
+      // Asked for listing photos after all: no longer an own-photos-only home.
+      ownOnly: false,
       // Re-running replaces the listing set and keeps the owner's own photos.
       photos: [...clean, ...p.photos.filter((x) => !SOURCES.includes(x.source))],
     }))

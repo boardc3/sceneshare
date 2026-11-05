@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { addVersion, normalizeProperty, visiblePhotos } from '../../shared/model.js'
+import { addVersion, BASE_MODES, normalizeProperty, visiblePhotos } from '../../shared/model.js'
 import AddressSearch from '../components/AddressSearch.jsx'
 import Compare from '../components/Compare.jsx'
 import Facts from '../components/Facts.jsx'
@@ -127,9 +127,9 @@ export default function Studio({ id }) {
     }
   }, [property, designs, sides])
 
-  // Listing photos from Zillow / Redfin — once per home, in the background.
-  useEffect(() => {
-    if (status !== 'ready' || !property?.address || property.listingChecked || listing !== 'idle') return
+  // Listing photos from Zillow / Redfin / Homes.com — once per home, in the background,
+  // unless the owner chose to use only their own photos (then on request).
+  const runListing = useCallback(() => {
     setListing('looking')
     post('/api/listing', { propertyId: id, lang })
       .then((d) => {
@@ -145,7 +145,11 @@ export default function Studio({ id }) {
         setListingError(`${shown(e) || ''} (${e.status || '—'} · ${e.code})`)
         track('listing_lookup_failed', { code: e.code }, { propertyId: id })
       })
-  }, [status, property, listing, id, lang])
+  }, [id, lang])
+  useEffect(() => {
+    if (status !== 'ready' || !property?.address || property.listingChecked || listing !== 'idle') return
+    runListing()
+  }, [status, property, listing, runListing])
 
   const onRendered = useCallback((photoId, version) => setProperty((p) => addVersion(p, photoId, version)), [])
   const onFinished = useCallback((p) => p && setProperty(normalizeProperty(p)), [])
@@ -362,11 +366,11 @@ export default function Studio({ id }) {
     }
   }
 
-  const locate = async ({ address, placeId, unit }) => {
+  const locate = async ({ address, placeId, unit, ownOnly = true }) => {
     setLocating(true)
     setError('')
     try {
-      await post('/api/property', { address, placeId, unit, lang, propertyId: id })
+      await post('/api/property', { address, placeId, unit, lang, propertyId: id, ownOnly })
       track('own_locate', null, { propertyId: id })
       setListing('idle')
       await load()
@@ -494,6 +498,21 @@ export default function Studio({ id }) {
                 {right && !rightImg && !photoBusy && <span className="viewer__hint"> — {t('studio.notInDesign')}</span>}
                 {!designs.length && <span className="viewer__hint"> — {t('studio.noVersion')}</span>}
               </p>
+              {photo.base && (
+                <p className="viewer__base">
+                  ✦ {t('base.using')}{' '}
+                  <button type="button" className="linkbtn" onClick={() => op({ op: 'photo.base', photoId: photo.id, designId: null }, 'photo_base_off')}>
+                    {t('base.useOriginal')}
+                  </button>
+                </p>
+              )}
+              {!photo.base && right && BASE_MODES.includes(right.mode) && right.picks[photo.id] && (
+                <p className="viewer__base">
+                  <button type="button" className="linkbtn" onClick={() => op({ op: 'photo.base', photoId: photo.id, designId: right.id }, 'photo_base_on')}>
+                    {t('base.useThis')}
+                  </button>
+                </p>
+              )}
 
               {!right && (
                 <div className="phototools__row phototools__row--solo">
@@ -621,6 +640,27 @@ export default function Studio({ id }) {
               <li className="rail__srchint">{t('listing.pasteHint')}</li>
             </ul>
           )}
+          {property.ownOnly && listing === 'idle' && (
+            <p className="rail__status">
+              {t('own.only')}{' '}
+              {property.address && (
+                <button type="button" className="linkbtn" onClick={runListing}>
+                  {t('own.findListing')}
+                </button>
+              )}
+            </p>
+          )}
+          {photos.some((p) => ['zillow', 'redfin', 'homes'].includes(p.source)) && listing !== 'looking' && (
+            <p className="rail__status">
+              <button
+                type="button"
+                className="linkbtn"
+                onClick={() => window.confirm(t('own.dropConfirm')) && op({ op: 'photos.dropListing' }, 'listing_photos_dropped')}
+              >
+                {t('own.drop')}
+              </button>
+            </p>
+          )}
           <div className="rail__add">
             <label className="btn btn--ink btn--small">
               {t('studio.takePhoto')}
@@ -631,6 +671,15 @@ export default function Studio({ id }) {
               <input type="file" accept="image/*" multiple className="sr-only" onChange={(e) => addFiles([...e.target.files])} disabled={uploading} />
             </label>
           </div>
+          {(() => {
+            // Own photos that haven't been made professional yet: do them all at once.
+            const raw = visible.filter((p) => p.source === 'owner' && !p.base && !designs.some((d) => BASE_MODES.includes(d.mode) && d.picks[p.id]))
+            return raw.length > 1 && !uploading && canRender && run?.status !== 'running' ? (
+              <button type="button" className="btn btn--glow btn--small rail__pro" onClick={() => setPrPhotos(raw)}>
+                {t('own.proAll', { n: raw.length })}
+              </button>
+            ) : null
+          })()}
           {uploading && (
             <p className="rail__status" role="status">
               <span className="spinner spinner--small" aria-hidden="true" /> {t('studio.uploading')}
@@ -716,6 +765,18 @@ export default function Studio({ id }) {
                 })()}
               </button>
             )}
+            {BASE_MODES.includes(right.mode) && Object.keys(right.picks).length > 0 && (() => {
+              const using = photos.filter((ph) => ph.base === right.id).length
+              return using ? (
+                <button type="button" className="btn btn--quiet btn--small" onClick={() => op({ op: 'design.base', designId: right.id, on: false }, 'design_base_off')}>
+                  ✦ {t('base.roundOn', { n: using })} · {t('base.roundOff')}
+                </button>
+              ) : (
+                <button type="button" className="btn btn--ink btn--small" onClick={() => op({ op: 'design.base', designId: right.id, on: true }, 'design_base_on')}>
+                  {t('base.roundUse')}
+                </button>
+              )
+            })()}
             {property.featured === right.id ? (
               <span className="tag">★ {t('design.featured')}</span>
             ) : (
@@ -789,7 +850,7 @@ export default function Studio({ id }) {
         <section className="location location--ask">
           <h2>{t('map.title')}</h2>
           <p>{t('studio.ownAddress')}</p>
-          <AddressSearch onFind={locate} busy={locating} />
+          <AddressSearch onFind={locate} busy={locating} ownOnlyDefault />
         </section>
       )}
 

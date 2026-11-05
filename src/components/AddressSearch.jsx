@@ -9,14 +9,16 @@ import { Modal } from "./Chrome.jsx";
 // not a submission, so they do not open the email gate; "Find the home" does.
 // Apartment buildings: on "Find the home", if the building has several known
 // units and none was given, a pop-up asks which unit (or the whole building).
-export default function AddressSearch({ onFind, onPreview, busy }) {
+export default function AddressSearch({ onFind, onPreview, busy, ownOnlyDefault = false }) {
   const { t, lang } = useI18n();
   const [value, setValue] = useState("");
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [picked, setPicked] = useState(null);
-  const [unit, setUnit] = useState(""); // '' = none chosen; '__building' = whole building
+  const [unit, setUnit] = useState("");
+  // Skip the photos from listing sites and work only from the owner's own.
+  const [ownOnly, setOwnOnly] = useState(ownOnlyDefault); // '' = none chosen; '__building' = whole building
   const [typing, setTyping] = useState(false); // the "+ Apt or unit" field is open
   const [checking, setChecking] = useState(false);
   const [ask, setAsk] = useState(null); // { address, placeId, units } while the unit pop-up is open
@@ -80,7 +82,7 @@ export default function AddressSearch({ onFind, onPreview, busy }) {
 
   const go = (address, placeId, u) => {
     const clean = u === "__building" ? "" : String(u || "").trim();
-    onFind({ address, placeId, unit: clean || undefined });
+    onFind({ address, placeId, unit: clean || undefined, ownOnly });
   };
 
   const submit = async (e) => {
@@ -220,6 +222,14 @@ export default function AddressSearch({ onFind, onPreview, busy }) {
               {t("unit.add")}
             </button>
           )}
+          <label className="search__own">
+            <input
+              type="checkbox"
+              checked={ownOnly}
+              onChange={(e) => setOwnOnly(e.target.checked)}
+            />
+            <span>{t("search.ownOnly")}</span>
+          </label>
         </div>
       </form>
       {ask &&

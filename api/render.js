@@ -1,4 +1,4 @@
-import { normalizeProperty, addVersion } from '../shared/model.js'
+import { normalizeProperty, addVersion, startingImage } from '../shared/model.js'
 import { chargeCredit, creditsOnly } from './_lib/billing.js'
 import { logSubmission, mutateProperty, saveRender, upsertDesign } from './_lib/db.js'
 import { newId, requireOwner, requireUser } from './_lib/gate.js'
@@ -58,7 +58,9 @@ export default route(
 
 async function renderOne({ res, body, user, p, photo, design, base, feedback, charge }) {
     const started = Date.now()
-    const source = await normalize(await loadImageInput(photo.src), 2048)
+    // Restyles start from the photo's professional version when it has one.
+    const start = startingImage(p, photo, design.mode)
+    const source = await normalize(await loadImageInput(start.src), 2048)
     const images = [{ buffer: source.buffer, mimeType: 'image/jpeg' }]
     let prompt
     if (base) {
@@ -99,6 +101,8 @@ async function renderOne({ res, body, user, p, photo, design, base, feedback, ch
       id: versionId,
       designId: design.id,
       baseVersionId: base?.id || null,
+      // The professional version this restyle started from, if any.
+      fromVersionId: start.versionId || null,
       src: stored,
       width: fitted.width,
       height: fitted.height,

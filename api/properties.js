@@ -1,4 +1,4 @@
-import { addDesign, normalizeProperty, publicView, removeDesign, removePhoto, setDesign, setHidden, pickVersion } from '../shared/model.js'
+import { addDesign, BASE_MODES, normalizeProperty, publicView, removeDesign, removePhoto, setBase, setDesign, setHidden, pickVersion } from '../shared/model.js'
 import { sessionUser } from './_lib/auth.js'
 import { assertCanAddDesign } from './_lib/billing.js'
 import { config, TERMS_VERSION } from './_lib/config.js'
@@ -62,7 +62,7 @@ async function read(req, res) {
   send(res, 200, { ok: true, owner, termsAccepted: accepted, property: owner && q.full === '1' ? p : publicView(p) })
 }
 
-const OPS = ['design.create', 'design.finish', 'design.review', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'photo.delete', 'property.rename', 'property.delete']
+const OPS = ['design.create', 'design.finish', 'design.review', 'design.base', 'photo.base', 'photos.dropListing', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'photo.delete', 'property.rename', 'property.delete']
 
 async function write(req, res) {
   const body = await readJson(req)
@@ -111,7 +111,10 @@ async function write(req, res) {
       case 'design.finish': {
         if (!d) throw new ApiError(404, 'design_missing', 'That design was removed.')
         const failed = (Array.isArray(body.failed) ? body.failed : []).filter((x) => p.photos.some((ph) => ph.id === x) && !d.picks[x])
-        const out = setDesign(p, d.id, { status: failed.length ? 'partial' : 'done', failed })
+        let out = setDesign(p, d.id, { status: failed.length ? 'partial' : 'done', failed })
+        // A finished "Make it professional" round becomes the starting point for later
+        // restyles of its photos (those without one already); the owner can switch back.
+        if (d.mode === 'cleanup') out = setBase(out, out.photos.filter((ph) => d.picks[ph.id] && !ph.base).map((ph) => ph.id), d.id)
         design = out.designs.find((x) => x.id === d.id)
         return out
       }
@@ -126,6 +129,28 @@ async function write(req, res) {
         if (!status) delete review[phId]
         else review[phId] = { status, note: status === 'change' ? String(body.note || '').trim().slice(0, 600) : '', at: new Date().toISOString() }
         return setDesign(p, d.id, { review })
+      }
+      // Start later restyles from this finishing round (on: true) or from the originals.
+      case 'design.base': {
+        if (!d) throw new ApiError(404, 'design_missing', 'That design was removed.')
+        if (!BASE_MODES.includes(d.mode)) throw new ApiError(400, 'not_a_finish', 'Only a “Make it professional” or relight round can be a starting point.')
+        const ids = Object.keys(d.picks)
+        if (body.on === false) return setBase(p, p.photos.filter((ph) => ph.base === d.id).map((ph) => ph.id), null)
+        return setBase(p, ids, d.id)
+      }
+      case 'photo.base': {
+        const ph = p.photos.find((x) => x.id === body.photoId)
+        if (!ph) throw new ApiError(404, 'photo_missing', 'That photo is no longer part of this home.')
+        if (!body.designId) return setBase(p, [ph.id], null)
+        const bd = p.designs.find((x) => x.id === body.designId)
+        if (!bd || !BASE_MODES.includes(bd.mode) || !bd.picks[ph.id]) throw new ApiError(400, 'not_a_finish', 'That round has no professional version of this photo.')
+        return setBase(p, [ph.id], bd.id)
+      }
+      // Use only my own photos: the photos pulled from listing sites leave this home.
+      case 'photos.dropListing': {
+        let out = { ...p, ownOnly: true, listingChecked: true }
+        for (const ph of p.photos.filter((x) => ['zillow', 'redfin', 'homes'].includes(x.source))) out = removePhoto(out, ph.id)
+        return out
       }
       case 'design.delete':
         if (!d) return false
@@ -159,13 +184,17 @@ async function write(req, res) {
     const gone = normalizeProperty(row.data).photos.flatMap((ph) => ph.versions.filter((v) => v.designId === body.designId).map((v) => v.src))
     background(Promise.all([removeImages(gone), deleteDesignRows(id, body.designId)]).catch(() => {}))
   }
+  if (op === 'photos.dropListing') {
+    const gone = normalizeProperty(row.data).photos.filter((x) => ['zillow', 'redfin', 'homes'].includes(x.source))
+    background(removeImages(gone.flatMap((ph) => [ph.src, ...ph.versions.map((v) => v.src)])).catch(() => {}))
+  }
   if (op === 'photo.delete' && body.photoId) {
     const ph = normalizeProperty(row.data).photos.find((x) => x.id === body.photoId)
     if (ph) background(removeImages([ph.source === 'owner' ? ph.src : null, ...ph.versions.map((v) => v.src)]).catch(() => {}))
   }
   if (op === 'photo.hide') background(setPhotoHidden(id, body.photoId, !!body.hidden))
   if (design) background(upsertDesign(design, { propertyId: id, user }))
-  if (op.startsWith('design.') && op !== 'design.review') {
+  if (op.startsWith('design.') && op !== 'design.review' && op !== 'design.base') {
     background(logSubmission({ user, kind: op.replace('.', '_'), propertyId: id, lang, meta: { designId: design?.id || body.designId, mode: design?.mode, style: design?.style, light: design?.light } }))
   }
   const full = { ...next, updatedAt: new Date().toISOString() }
