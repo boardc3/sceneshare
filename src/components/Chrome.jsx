@@ -214,10 +214,10 @@ export function UpgradePrompt() {
           className="btn btn--glow"
           onClick={() => {
             close()
-            navigate(info.limit === 'credits' ? '/plan#credits' : '/plan')
+            navigate(info.limit === 'credits' ? '/plan#credits' : info.limit === 'homes' && info.plan === 'premium' ? '/plan#extras' : '/plan')
           }}
         >
-          {info.limit === 'credits' ? t('credits.buyMore') : t('plan.seePlans')}
+          {info.limit === 'credits' ? t('credits.buyMore') : info.limit === 'homes' && info.plan === 'premium' ? t('extra.cta') : t('plan.seePlans')}
         </button>
         <button type="button" className="btn btn--quiet" onClick={close}>
           {t('plan.notNow')}

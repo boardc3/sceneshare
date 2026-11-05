@@ -1,12 +1,13 @@
 import crypto from 'node:crypto'
 import { billingState, config } from './config.js'
-import { addCredits, creditBalance, debitCredit, getBillingRow, recordBillingEvent, refundCredit, setBilling, usageFor } from './db.js'
+import { activeExtras, addCredits, addExtra, creditBalance, debitCredit, getBillingRow, recordBillingEvent, refundCredit, setBilling, usageFor } from './db.js'
 import { isAdmin } from './gate.js'
 import { ApiError } from './http.js'
 
 // Plans (Chris, 2026-11-04): a 14-day free trial, then Entry ($49/month, 2 homes)
-// or Premium ($99/month, 5 homes), with Premium add-ons of 5 more homes for $75
-// each. Yearly is 10× monthly. Every rendered image costs one credit; a take the
+// or Premium ($99/month, 5 homes). Yearly is 10× monthly. Premium accounts buy
+// Extras as they need them — not a plan: $75 each for 5 more property slots for
+// 30 days plus 150 re-render credits that never expire; some agents buy ten a year. Every rendered image costs one credit; a take the
 // alignment check throws away and refires is on us. Credits reset monthly; bought
 // credit packs never expire and are used after the allotment. Limits are checked
 // on the server; the browser only displays them.
@@ -18,13 +19,14 @@ export const PLANS = {
   premium: { homes: 5, credits: 300, emailsPerHome: null, designsPerHome: null },
   none: { homes: 0, credits: 0, emailsPerHome: 0, designsPerHome: null },
 }
-export const ADDON = { homes: 5, credits: 150, max: 10 }
+export const EXTRA = { homes: 5, credits: 150, days: 30, amount: 7500, currency: 'usd', maxActive: 20 }
 export const PRICES = {
   currency: 'usd',
   entry: { month: 4900, year: 49000 },
   premium: { month: 9900, year: 99000 },
-  addon: { month: 7500, year: 75000 },
 }
+// Before 2026-11-04 evening Premium could carry a recurring add-on; recognised, never sold.
+const LEGACY_ADDON = { month: 7500, year: 75000 }
 export const CREDIT_PACKS = {
   c100: { credits: 100, amount: 1500, currency: 'usd' },
   c500: { credits: 500, amount: 6000, currency: 'usd' },
@@ -34,7 +36,6 @@ const PREVIEW_DAYS = { month: 30, year: 365 }
 const GRACE_MS = 3 * 864e5
 const ACTIVE = ['active', 'trialing', 'past_due']
 const tierOf = (p) => (p === 'pro' ? 'premium' : TIERS.includes(p) ? p : null) // 'pro' = before 2026-11-04
-const clampAddons = (n) => Math.max(0, Math.min(ADDON.max, Math.floor(Number(n) || 0)))
 
 // ---------------------------------------------------------------- entitlement
 
@@ -47,7 +48,6 @@ export function entitlement(row, user = null) {
     mode,
     plan: 'none',
     paid: false,
-    addons: 0,
     source: row?.plan_source || null,
     status: row?.plan_status || null,
     interval: row?.plan_interval || null,
@@ -62,7 +62,7 @@ export function entitlement(row, user = null) {
   const live = tier && ACTIVE.includes(row?.plan_status || '') && end && end + GRACE_MS > now
   // A preview subscription means nothing once real billing is on, and the reverse.
   const sourceMatches = row?.plan_source === 'preview' ? mode === 'preview' : row?.plan_source === 'stripe' ? mode === 'test' || mode === 'live' : row?.plan_source === 'comp'
-  if (live && sourceMatches) return { ...base, plan: tier, paid: true, addons: tier === 'premium' ? clampAddons(row?.plan_addons) : 0 }
+  if (live && sourceMatches) return { ...base, plan: tier, paid: true }
   if (user && isAdmin(user)) return { ...base, plan: 'premium', source: 'admin', daysLeft: null, periodEnd: null }
   const created = row?.created_at ? new Date(row.created_at).getTime() : now
   const trialEnd = created + TRIAL_DAYS * 864e5
@@ -70,15 +70,23 @@ export function entitlement(row, user = null) {
   return base
 }
 
-export function limitsFor(ent) {
+export function limitsFor(ent, extraHomes = 0) {
   if (ent.unlimited) return { homes: null, credits: PLANS.premium.credits, emailsPerHome: null, designsPerHome: null }
   const l = { ...PLANS[ent.plan] }
-  if (ent.plan === 'premium' && ent.addons) {
-    l.homes += ent.addons * ADDON.homes
-    l.credits += ent.addons * ADDON.credits
-  }
+  if (ent.plan === 'premium') l.homes += extraHomes
   if (ent.source === 'admin') l.homes = null
   return l
+}
+
+const modeKey = (mode) => (mode === 'off' ? 'live' : mode)
+async function extrasFor(user, ent) {
+  if (ent.plan !== 'premium') return { active: 0, homes: 0, items: [] }
+  const rows = await activeExtras(user.id, modeKey(ent.mode))
+  return {
+    active: rows.length,
+    homes: rows.reduce((n, r) => n + r.homes, 0),
+    items: rows.map((r) => ({ id: r.id, boughtAt: new Date(r.at).toISOString(), expiresAt: new Date(r.expires_at).toISOString(), homes: r.homes, credits: r.credits })),
+  }
 }
 
 // ---------------------------------------------------------------- credits
@@ -107,7 +115,7 @@ export function creditCycle(ent, now = new Date()) {
   return { start, next: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)) }
 }
 
-const packPoolFor = (mode) => `pack:${mode === 'off' ? 'live' : mode}`
+const packPoolFor = (mode) => `pack:${modeKey(mode)}`
 const unmeteredFor = (ent) => Boolean(ent.unlimited || ent.source === 'admin')
 
 async function creditsFor(user, ent, limits = limitsFor(ent)) {
@@ -132,9 +140,10 @@ async function creditsFor(user, ent, limits = limitsFor(ent)) {
 export async function billingFor(user, propertyId = null) {
   const row = await getBillingRow(user.id)
   const ent = entitlement(row, user)
-  const limits = limitsFor(ent)
+  const extras = await extrasFor(user, ent)
+  const limits = limitsFor(ent, extras.homes)
   const [usage, credits] = await Promise.all([usageFor(user.id, propertyId), creditsFor(user, ent, limits)])
-  return { ...ent, limits, usage, credits }
+  return { ...ent, limits, usage, credits, extras }
 }
 
 export async function creditsOnly(user) {
@@ -180,7 +189,7 @@ function limitError(kind, limit, ent) {
       ent.plan === 'entry'
         ? `Entry includes ${limit} homes. Premium includes 5, and more can be added.`
         : ent.plan === 'premium'
-          ? `Your Premium plan includes ${limit} homes. Add 5 more homes for $75 a month.`
+          ? `You’re using all ${limit} property slots. Add an Extra: 5 more properties for 30 days and 150 re-renders, $75.`
           : `The free trial includes ${limit} homes. Choose a plan to add more.`,
     emails: `The free trial includes ${limit} emailed shares per home. Choose a plan, or copy the link instead.`,
     credits: `You’ve used all ${limit} render credits for this ${ent.plan === 'trial' ? 'trial' : 'month'}. Buy more credits to keep rendering.`,
@@ -214,23 +223,23 @@ export async function assertCanEmail(user, propertyId, count) {
   return b
 }
 
-// What a plan costs a month (or a year) with its add-ons, in cents.
-export function planPrice(tier, interval, addons = 0) {
-  const per = interval === 'year' ? 'year' : 'month'
-  return PRICES[tier][per] + (tier === 'premium' ? clampAddons(addons) * PRICES.addon[per] : 0)
+// What a plan costs a month (or a year), in cents.
+export function planPrice(tier, interval) {
+  return PRICES[tier][interval === 'year' ? 'year' : 'month']
 }
 
 function readChoice(body) {
   const tier = TIERS.includes(body?.tier) ? body.tier : null
   if (!tier) throw new ApiError(400, 'bad_tier', 'Choose Entry or Premium.')
-  return { tier, interval: body.interval === 'year' ? 'year' : 'month', addons: tier === 'premium' ? clampAddons(body.addons) : 0 }
+  return { tier, interval: body.interval === 'year' ? 'year' : 'month' }
 }
 export { readChoice }
 
 // ---------------------------------------------------------------- preview mode
 // Lets the whole trial → subscribe → change → cancel → expire cycle run with no money moving.
 
-export async function previewSubscribe(user, { tier, interval, addons }) {
+export async function previewSubscribe(user, { tier, interval }) {
+  const addons = 0
   const days = PREVIEW_DAYS[interval] || 30
   const row = await setBilling(user.id, {
     plan: tier,
@@ -245,7 +254,8 @@ export async function previewSubscribe(user, { tier, interval, addons }) {
   return row
 }
 
-export async function previewChange(user, { tier, addons }) {
+export async function previewChange(user, { tier }) {
+  const addons = 0
   const row = await getBillingRow(user.id)
   if (row?.plan_source !== 'preview' || !tierOf(row?.plan)) throw new ApiError(400, 'no_subscription', 'There is no subscription to change.')
   const out = await setBilling(user.id, { plan: tier, addons })
@@ -298,7 +308,7 @@ async function customerFor(user, row) {
 }
 
 // One Stripe product per thing sold, found by metadata (created the first time).
-const PRODUCT_NAMES = { entry: 'Sceneshare Entry', premium: 'Sceneshare Premium', addon: 'Sceneshare Premium · 5 more homes' }
+const PRODUCT_NAMES = { entry: 'Sceneshare Entry', premium: 'Sceneshare Premium', extra: 'Sceneshare Extra · 5 properties for 30 days + 150 re-renders' }
 const productCache = new Map()
 export async function productFor(key) {
   if (productCache.has(key)) return productCache.get(key)
@@ -310,12 +320,11 @@ export async function productFor(key) {
 }
 const priceData = async (key, interval) => ({ currency: PRICES.currency, unit_amount: PRICES[key][interval], recurring: { interval }, product: await productFor(key) })
 
-export async function checkoutSession(user, { tier, interval, addons }, origin) {
+export async function checkoutSession(user, { tier, interval }, origin) {
   const row = await getBillingRow(user.id)
   const customer = await customerFor(user, row)
   const line_items = { 0: { quantity: 1, price_data: await priceData(tier, interval) } }
-  if (tier === 'premium' && addons > 0) line_items[1] = { quantity: addons, price_data: await priceData('addon', interval) }
-  const meta = { userId: user.id, tier, addons: String(addons) }
+  const meta = { userId: user.id, tier }
   const s = await stripe('POST', 'checkout/sessions', {
     mode: 'subscription',
     customer,
@@ -328,29 +337,61 @@ export async function checkoutSession(user, { tier, interval, addons }, origin) 
     success_url: `${origin}/plan?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/plan?checkout=cancel`,
   })
-  await recordBillingEvent({ id: `co_${s.id}`, source: 'stripe', type: 'checkout_started', userId: user.id, data: { tier, interval, addons, session: s.id } })
+  await recordBillingEvent({ id: `co_${s.id}`, source: 'stripe', type: 'checkout_started', userId: user.id, data: { tier, interval, session: s.id } })
   return s.url
 }
 
-// Switch tier or add-ons on a live subscription, prorated.
-export async function changeSubscription(user, { tier, addons }) {
+// Switch tier on a live subscription, prorated. A legacy add-on item is removed.
+export async function changeSubscription(user, { tier }) {
   const row = await getBillingRow(user.id)
   if (!row?.stripe_subscription_id || !ACTIVE.includes(row.plan_status || '')) throw new ApiError(400, 'no_subscription', 'There is no subscription to change.')
   const sub = await stripe('GET', `subscriptions/${row.stripe_subscription_id}`)
   const items = sub.items?.data || []
   const interval = items[0]?.price?.recurring?.interval === 'year' ? 'year' : 'month'
-  const addonProduct = await productFor('addon')
-  const prodId = (it) => (typeof it.price?.product === 'string' ? it.price.product : it.price?.product?.id)
-  const addonItem = items.find((it) => prodId(it) === addonProduct)
-  const tierItem = items.find((it) => it !== addonItem)
-  const params = { proration_behavior: 'create_prorations', metadata: { userId: user.id, tier, addons: String(addons) }, items: {} }
+  const isLegacy = (it) => it.price?.unit_amount === LEGACY_ADDON[it.price?.recurring?.interval === 'year' ? 'year' : 'month']
+  const tierItem = items.find((it) => !isLegacy(it)) || items[0]
+  const params = { proration_behavior: 'create_prorations', metadata: { userId: user.id, tier }, items: {} }
   let i = 0
   params.items[i++] = { id: tierItem.id, price_data: await priceData(tier, interval), quantity: 1 }
-  if (addons > 0) params.items[i++] = addonItem ? { id: addonItem.id, quantity: addons } : { price_data: await priceData('addon', interval), quantity: addons }
-  else if (addonItem) params.items[i++] = { id: addonItem.id, deleted: 'true' }
-  const next = await stripe('POST', `subscriptions/${sub.id}`, params, { idempotencyKey: `chg_${sub.id}_${tier}_${addons}_${Math.floor(Date.now() / 60000)}` })
-  await recordBillingEvent({ id: `chg_${crypto.randomUUID()}`, source: 'stripe', type: 'change', userId: user.id, data: { tier, addons } })
+  for (const it of items) if (it !== tierItem && isLegacy(it)) params.items[i++] = { id: it.id, deleted: 'true' }
+  const next = await stripe('POST', `subscriptions/${sub.id}`, params, { idempotencyKey: `chg_${sub.id}_${tier}_${Math.floor(Date.now() / 60000)}` })
+  await recordBillingEvent({ id: `chg_${crypto.randomUUID()}`, source: 'stripe', type: 'change', userId: user.id, data: { tier } })
   return applySubscription(user.id, next)
+}
+
+// ---------------------------------------------------------------- Extras (Premium)
+
+async function assertCanBuyExtra(user) {
+  const ent = entitlement(await getBillingRow(user.id), user)
+  if (ent.plan !== 'premium' || ent.source === 'admin' || ent.unlimited) throw new ApiError(400, 'premium_only', 'Extras are for Premium accounts. Switch to Premium to add properties.')
+  const now = await activeExtras(user.id, modeKey(ent.mode))
+  if (now.length >= EXTRA.maxActive) throw new ApiError(400, 'too_many_extras', `You have ${now.length} Extras running. Contact us for more.`)
+  return ent
+}
+
+export async function previewBuyExtra(user) {
+  await assertCanBuyExtra(user)
+  const id = `prev_${crypto.randomUUID()}`
+  await addExtra(user.id, { id, homes: EXTRA.homes, credits: EXTRA.credits, expiresAt: new Date(Date.now() + EXTRA.days * 864e5).toISOString(), mode: 'preview', ref: 'extra' })
+  await recordBillingEvent({ id, source: 'preview', type: 'extra', userId: user.id, data: { homes: EXTRA.homes, credits: EXTRA.credits, days: EXTRA.days } })
+}
+
+export async function extraCheckout(user, origin) {
+  await assertCanBuyExtra(user)
+  const row = await getBillingRow(user.id)
+  const customer = await customerFor(user, row)
+  const s = await stripe('POST', 'checkout/sessions', {
+    mode: 'payment',
+    customer,
+    client_reference_id: user.id,
+    line_items: { 0: { quantity: 1, price_data: { currency: EXTRA.currency, unit_amount: EXTRA.amount, product: await productFor('extra') } } },
+    payment_intent_data: { metadata: { userId: user.id, kind: 'extra' } },
+    metadata: { userId: user.id, kind: 'extra' },
+    success_url: `${origin}/plan?extra=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/plan?extra=cancel`,
+  })
+  await recordBillingEvent({ id: `co_${s.id}`, source: 'stripe', type: 'extra_checkout_started', userId: user.id, data: { session: s.id } })
+  return s.url
 }
 
 // ---------------------------------------------------------------- credit packs
@@ -382,9 +423,14 @@ export async function creditsCheckout(user, packKey, origin) {
   return s.url
 }
 
-// Add a paid Checkout session's credits (from the webhook or the return page).
+// Add a paid Checkout session's credits or Extra (from the webhook or the return page).
 export async function applyCreditSession(userId, session) {
-  if (session?.metadata?.kind !== 'credits' || session.payment_status !== 'paid') return false
+  if (session?.payment_status !== 'paid') return false
+  if (session?.metadata?.kind === 'extra') {
+    const paidAt = (session.created ? session.created * 1000 : Date.now())
+    return addExtra(userId, { id: `cs_${session.id}`, homes: EXTRA.homes, credits: EXTRA.credits, expiresAt: new Date(paidAt + EXTRA.days * 864e5).toISOString(), mode: session.livemode ? 'live' : 'test', ref: session.id })
+  }
+  if (session?.metadata?.kind !== 'credits') return false
   const pack = CREDIT_PACKS[session.metadata.pack]
   if (!pack) return false
   return addCredits(userId, { id: `cs_${session.id}`, credits: pack.credits, mode: session.livemode ? 'live' : 'test', ref: session.metadata.pack, data: { session: session.id, amount: session.amount_total } })
@@ -407,29 +453,24 @@ export async function portalSession(user, origin) {
 // Copy a Stripe subscription onto the account. The tier and add-on count come from
 // the item prices (and the subscription's metadata when prices are ambiguous).
 export function readSubscription(sub) {
-  const items = sub?.items?.data || []
   let tier = null
-  let addons = 0
-  for (const it of items) {
+  for (const it of sub?.items?.data || []) {
     const amt = it.price?.unit_amount
     const per = it.price?.recurring?.interval === 'year' ? 'year' : 'month'
-    if (amt === PRICES.addon[per]) addons = it.quantity || 1
-    else if (amt === PRICES.entry[per]) tier = 'entry'
+    if (amt === PRICES.entry[per]) tier = 'entry'
     else if (amt === PRICES.premium[per]) tier = 'premium'
   }
-  tier = tier || tierOf(sub?.metadata?.tier) || 'premium'
-  if (!addons && sub?.metadata?.addons) addons = Number(sub.metadata.addons) || 0
-  return { tier, addons: tier === 'premium' ? clampAddons(addons) : 0 }
+  return { tier: tier || tierOf(sub?.metadata?.tier) || 'premium' }
 }
 
 export async function applySubscription(userId, sub) {
   const item = sub?.items?.data?.[0]
   const periodEnd = sub.current_period_end || item?.current_period_end || null
   const live = ACTIVE.includes(sub.status)
-  const { tier, addons } = readSubscription(sub)
+  const { tier } = readSubscription(sub)
   return setBilling(userId, {
     plan: live ? tier : null,
-    addons,
+    addons: 0,
     status: sub.status,
     source: 'stripe',
     interval: item?.price?.recurring?.interval || null,

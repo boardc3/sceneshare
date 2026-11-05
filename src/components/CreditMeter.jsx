@@ -105,7 +105,7 @@ export default function CreditMeter() {
       <div className="cmeter__panel" id={panelId} role="dialog" aria-label={t('credits.title')} hidden={!open}>
         <div className="cmeter__head">
           <div>
-            <p className="cmeter__eyebrow">{b.plan === 'none' ? t('plan.name.none') : `Sceneshare ${t(`plan.name.${b.plan}`)}`}{b.addons > 0 ? ` ${t(b.addons === 1 ? 'plan.addonsOne' : 'plan.addonsMany', { n: b.addons })}` : ''}</p>
+            <p className="cmeter__eyebrow">{b.plan === 'none' ? t('plan.name.none') : `Sceneshare ${t(`plan.name.${b.plan}`)}`}{b.extras?.active > 0 ? ` ${t(b.extras.active === 1 ? 'extra.activeOne' : 'extra.activeMany', { n: b.extras.active })}` : ''}</p>
             {sub && <p className="cmeter__sub">{sub}</p>}
           </div>
           {(b.mode === 'preview' || b.mode === 'test') && <span className="cmeter__mode">{t(`plan.mode.${b.mode}.short`)}</span>}

@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react'
 import { track } from './analytics.js'
 import { get, post } from './api.js'
 
-let state = { ready: false, billing: null, plans: null, prices: null, packs: null, addon: null, trialDays: 14 }
+let state = { ready: false, billing: null, plans: null, prices: null, packs: null, extra: null, trialDays: 14 }
 const subs = new Set()
 function set(patch) {
   state = { ...state, ...patch }
@@ -28,7 +28,7 @@ export function loadBilling({ sync = false, session = null } = {}) {
   if (inflight && !sync) return inflight
   const qs = [sync && 'sync=1', session && `session=${encodeURIComponent(session)}`].filter(Boolean).join('&')
   inflight = get(`/api/billing${qs ? `?${qs}` : ''}`)
-    .then((d) => (set({ ready: true, billing: d.billing, plans: d.plans, prices: d.prices, packs: d.packs, addon: d.addon, trialDays: d.trialDays }), d.billing))
+    .then((d) => (set({ ready: true, billing: d.billing, plans: d.plans, prices: d.prices, packs: d.packs, extra: d.extra, trialDays: d.trialDays }), d.billing))
     .catch(() => (set({ ready: true }), null))
     .finally(() => (inflight = null))
   return inflight
@@ -36,29 +36,41 @@ export function loadBilling({ sync = false, session = null } = {}) {
 export const clearBilling = () => set({ ready: false, billing: null })
 
 // Start a plan: Stripe Checkout, or straight away in preview.
-export async function subscribe({ tier, interval = 'month', addons = 0 }, from = 'plan') {
-  track('upgrade_start', { tier, interval, addons, from })
-  const d = await post('/api/billing', { op: 'checkout', tier, interval, addons })
+export async function subscribe({ tier, interval = 'month' }, from = 'plan') {
+  track('upgrade_start', { tier, interval, from })
+  const d = await post('/api/billing', { op: 'checkout', tier, interval })
   if (d.url) {
     window.location.assign(d.url) // Stripe Checkout
     return { redirecting: true }
   }
   set({ billing: d.billing })
-  track('upgrade_done', { tier, interval, addons, mode: d.billing?.mode })
+  track('upgrade_done', { tier, interval, mode: d.billing?.mode })
   return { billing: d.billing }
 }
 
-// Switch tier or add-ons on the current subscription (prorated by Stripe).
-export async function changePlan({ tier, addons = 0 }) {
-  track('plan_change', { tier, addons })
-  const d = await post('/api/billing', { op: 'change', tier, addons })
+// Switch tier on the current subscription (prorated by Stripe).
+export async function changePlan({ tier }) {
+  track('plan_change', { tier })
+  const d = await post('/api/billing', { op: 'change', tier })
   set({ billing: d.billing })
   return { billing: d.billing }
 }
 
+// Premium: one Extra (5 more properties for 30 days + 150 re-renders).
+export async function buyExtra(from = 'plan') {
+  track('extra_buy_start', { from })
+  const d = await post('/api/billing', { op: 'extra' })
+  if (d.url) {
+    window.location.assign(d.url) // Stripe Checkout
+    return { redirecting: true }
+  }
+  set({ billing: d.billing })
+  track('extra_buy_done', { mode: d.billing?.mode })
+  return { billing: d.billing }
+}
+
 // What a plan costs per interval, in cents.
-export const planPrice = (prices, tier, interval, addons = 0) =>
-  prices ? prices[tier][interval] + (tier === 'premium' ? addons * prices.addon[interval] : 0) : 0
+export const planPrice = (prices, tier, interval) => (prices ? prices[tier][interval] : 0)
 
 export async function buyCredits(pack, from = 'plan') {
   track('credits_buy_start', { pack, from })

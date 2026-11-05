@@ -269,6 +269,18 @@ async function migrate(s) {
     data jsonb
   )`
   await s`create index if not exists credit_ledger_user_idx on credit_ledger (user_id, at desc)`
+  // Extras (Premium): each adds property slots for a time; its credits go into credit_ledger.
+  await s`create table if not exists extras (
+    id text primary key,
+    user_id text not null,
+    at timestamptz not null default now(),
+    expires_at timestamptz not null,
+    homes int not null,
+    credits int not null,
+    mode text not null,
+    ref text
+  )`
+  await s`create index if not exists extras_user_idx on extras (user_id, expires_at desc)`
 
   await s`create table if not exists events (
     id bigserial primary key,
@@ -343,7 +355,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 9
+const SCHEMA_VERSION = 10
 
 async function upToDate(s) {
   try {
@@ -781,6 +793,7 @@ export async function deleteUserData(user) {
   await s`delete from terms_requests where owner_user_id = ${user.id}`
   await s`delete from terms_acceptances where user_id = ${user.id}`
   await s`delete from credit_ledger where user_id = ${user.id}`
+  await s`delete from extras where user_id = ${user.id}`
   await s`delete from users where id = ${user.id}`
   return { properties: props.length }
 }
@@ -932,6 +945,26 @@ export async function debitCredit(userId, { id, kind, since, allotment, packPool
     where st.used < ${allotment} or st.packs > 0
     returning pool`
   return rows[0]?.pool || null
+}
+
+// Extras still running for this account (in this billing mode), soonest to end first.
+export async function activeExtras(userId, mode) {
+  const s = await ensure()
+  if (!s) return []
+  return s`select id, at, expires_at, homes, credits from extras where user_id = ${userId} and mode = ${mode} and expires_at > now() order by expires_at`
+}
+
+// One Extra: property slots until expiresAt, plus its credits as a never-expiring
+// pack. Idempotent on id (a webhook and the return page can both apply it).
+export async function addExtra(userId, { id, homes, credits, expiresAt, mode, ref = null }) {
+  const s = await ensure()
+  if (!s) return false
+  const rows = await s`insert into extras (id, user_id, expires_at, homes, credits, mode, ref) values (${id}, ${userId}, ${expiresAt}, ${homes}, ${credits}, ${mode}, ${ref})
+    on conflict (id) do nothing returning id`
+  if (!rows.length) return false
+  await s`insert into credit_ledger (id, user_id, delta, kind, mode, ref) values (${'ex_' + id}, ${userId}, ${credits}, 'extra', ${mode}, ${ref})
+    on conflict (id) do nothing`
+  return true
 }
 
 // A render that failed gives its credit back.

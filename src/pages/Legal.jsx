@@ -146,7 +146,7 @@ function Terms() {
 
       <h2 id="subscriptions">10. Plans, subscriptions and automatic renewal</h2>
       <p>
-        New accounts start with a <strong>14-day free trial</strong>. After it, Sceneshare is offered on paid plans, <strong>Entry</strong> and <strong>Premium</strong>, with optional Premium add-ons. The current prices, what each plan includes and its limits are shown on the{' '}
+        New accounts start with a <strong>14-day free trial</strong>. After it, Sceneshare is offered on paid plans, <strong>Entry</strong> and <strong>Premium</strong>, with optional Extras for Premium accounts. The current prices, what each plan includes and its limits are shown on the{' '}
         <Link to="/plan">Plan and billing</Link> page before you subscribe.
       </p>
       <ul>
@@ -169,10 +169,12 @@ function Terms() {
           renewal payment fails, Stripe may retry it, and your plan may end if the payment cannot be collected.
         </li>
         <li>
-          <strong>Limits and render credits.</strong> Each plan includes a number of homes (the trial and Entry: 2; Premium: 5, plus 5 per add-on). Each
+          <strong>Limits and render credits.</strong> Each plan includes a number of homes (the trial and Entry: 2; Premium: 5). Each
           rendered image (a restyle, a clean-up or a requested change) uses one render credit; automatic retries we run to keep a room aligned do not. Each plan
-          includes an allotment of credits (the trial: 50; Entry: 150 a month; Premium: 300 a month, plus 150 per add-on), which resets at the start of each
-          monthly cycle and does not roll over. Changing plan or add-ons part-way through a period is prorated by our payment provider. Extra credits can be
+          includes an allotment of credits (the trial: 50; Entry: 150 a month; Premium: 300 a month), which resets at the start of each monthly cycle and does
+          not roll over. Changing plan part-way through a period is prorated by our payment provider. Premium accounts can buy <strong>Extras</strong>, one-off
+          purchases that each add 5 property slots for 30 days and 150 credits that do not expire; when an Extra ends, homes already added are kept, but no new
+          homes can be added beyond the plan's limit. Extra credits can also be
           bought in packs; bought credits do not expire while your account is open, are used only after the monthly allotment, and are not refundable except where
           the law requires. A render that fails returns its credit.
         </li>

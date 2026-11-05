@@ -21,7 +21,7 @@ async function handle(r) {
     const err = new ApiError(data?.error || 'http_' + r.status, data?.message || '', r.status)
     err.data = data
     // A plan limit anywhere opens the upgrade prompt (components/Chrome.jsx).
-    if (err.code === 'plan_limit') window.dispatchEvent(new CustomEvent('ss:plan-limit', { detail: { limit: data.limit, max: data.max, message: data.message } }))
+    if (err.code === 'plan_limit') window.dispatchEvent(new CustomEvent('ss:plan-limit', { detail: { limit: data.limit, max: data.max, plan: data.plan, message: data.message } }))
     if (err.code === 'terms_required') window.dispatchEvent(new CustomEvent('ss:terms-required'))
     throw err
   }

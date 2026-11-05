@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
-import { buyCredits, changePlan, loadBilling, manageBilling, periodShare, planPrice, setCancel, subscribe, useBilling } from '../lib/billing.js'
+import { buyCredits, buyExtra, changePlan, loadBilling, manageBilling, periodShare, planPrice, setCancel, subscribe, useBilling } from '../lib/billing.js'
 import { Link, useRouter } from '../router.jsx'
 
 const money = (cents, lang) => new Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100)
@@ -30,7 +30,7 @@ function Meter({ label, used, limit, t }) {
 export default function Plan() {
   const { t, lang } = useI18n()
   const { user, ready } = useAuth()
-  const { billing: b, plans, prices, packs, addon } = useBilling()
+  const { billing: b, plans, prices, packs, extra } = useBilling()
   const { navigate } = useRouter()
   const [busy, setBusy] = useState(null)
   const [msg, setMsg] = useState(null)
@@ -41,7 +41,11 @@ export default function Plan() {
     const q = new URLSearchParams(window.location.search)
     const back = q.get('checkout')
     const creditsBack = q.get('credits')
-    loadBilling({ sync: true, session: creditsBack === 'success' ? q.get('session_id') : null }).then((nb) => {
+    const extraBack = q.get('extra')
+    loadBilling({ sync: true, session: creditsBack === 'success' || extraBack === 'success' ? q.get('session_id') : null }).then((nb) => {
+      if (extraBack === 'success') setMsg({ ok: true, text: nb?.extras?.active ? t('extra.added') : t('credits.processing') })
+      if (extraBack === 'cancel') setMsg({ ok: false, text: t('credits.canceled') })
+      if (extraBack) navigate('/plan#extras', { replace: true })
       if (creditsBack === 'success') {
         setMsg({ ok: true, text: (nb?.credits?.packs ?? 0) > 0 ? t('credits.added') : t('credits.processing') })
         track('credits_buy_done', { mode: nb?.mode })
@@ -61,7 +65,7 @@ export default function Plan() {
   const hasBilling = Boolean(b)
   useEffect(() => {
     if (!hasBilling) return
-    const go = (id) => id === 'credits' && setTimeout(() => document.getElementById('credits')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
+    const go = (id) => (id === 'credits' || id === 'extras') && setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
     go(window.location.hash.slice(1))
     const on = (e) => go(e.detail)
     window.addEventListener('ss:hash', on)
@@ -131,7 +135,7 @@ export default function Plan() {
             <p className="plan__label">{t('plan.current')}</p>
             <h2 id="p-current">
               {b.plan === 'none' ? planName : `Sceneshare ${planName}`}
-              {b.addons > 0 && <span className="plan__addons"> {t(b.addons === 1 ? 'plan.addonsOne' : 'plan.addonsMany', { n: b.addons })}</span>}
+              {b.extras?.active > 0 && <span className="plan__addons"> {t(b.extras.active === 1 ? 'extra.activeOne' : 'extra.activeMany', { n: b.extras.active })}</span>}
             </h2>
           </div>
           {big != null && (
@@ -151,7 +155,7 @@ export default function Plan() {
             </div>
             {paid && (
               <p className="fine">
-                {b.cancelAtPeriodEnd ? t('plan.endsOn', { date: day(b.periodEnd, lang) }) : t('plan.renewsOn', { date: day(b.periodEnd, lang), price: money(planPrice(prices, b.plan, b.interval === 'year' ? 'year' : 'month', b.addons), lang), per: t(b.interval === 'year' ? 'plan.perYear' : 'plan.perMonth') })}
+                {b.cancelAtPeriodEnd ? t('plan.endsOn', { date: day(b.periodEnd, lang) }) : t('plan.renewsOn', { date: day(b.periodEnd, lang), price: money(planPrice(prices, b.plan, b.interval === 'year' ? 'year' : 'month'), lang), per: t(b.interval === 'year' ? 'plan.perYear' : 'plan.perMonth') })}
                 {b.status === 'past_due' && <> {t('plan.pastDue')}</>}
               </p>
             )}
@@ -183,7 +187,37 @@ export default function Plan() {
       </section>
 
       {b.source !== 'admin' && b.mode !== 'off' && prices && (
-        <Tiers b={b} prices={prices} plans={plans} addon={addon} busy={busy} run={run} managed={managed} />
+        <Tiers b={b} prices={prices} plans={plans} busy={busy} run={run} managed={managed} />
+      )}
+
+      {b.plan === 'premium' && b.source !== 'admin' && extra && (
+        <section className="settings__card extras" id="extras" aria-labelledby="p-extras">
+          <div className="plan__head">
+            <div>
+              <p className="plan__label">{t('extra.label')}</p>
+              <h2 id="p-extras">{t('extra.title')}</h2>
+            </div>
+            <div className="plan__days">
+              <strong>{b.extras?.active || 0}</strong>
+              <span>{t('extra.running')}</span>
+            </div>
+          </div>
+          <p>{t('extra.body', { homes: extra.homes, credits: extra.credits, days: extra.days, price: money(extra.amount, lang) })}</p>
+          {b.extras?.items?.length > 0 && (
+            <ul className="extras__list">
+              {b.extras.items.map((x) => (
+                <li key={x.id}>
+                  <span>{t('extra.item', { homes: x.homes })}</span>
+                  <span className="fine">{t('extra.until', { date: day(x.expiresAt, lang) })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" className="btn btn--glow" disabled={!!busy} onClick={() => run('extra', () => buyExtra(), () => t('extra.added'))}>
+            {busy === 'extra' ? t('auth.working') : t('extra.buy', { price: money(extra.amount, lang) })}
+          </button>
+          <p className="fine">{managed ? t('plan.secure') : t('credits.previewNote')}</p>
+        </section>
       )}
 
       {b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && (
@@ -228,17 +262,14 @@ export default function Plan() {
   )
 }
 
-// Entry and Premium side by side, monthly or yearly, with Premium's add-on stepper.
-function Tiers({ b, prices, plans, addon, busy, run, managed }) {
+// Entry and Premium side by side, monthly or yearly.
+function Tiers({ b, prices, plans, busy, run, managed }) {
   const { t, lang } = useI18n()
   const paid = b.paid
   const [interval, setIv] = useState(paid && b.interval === 'year' ? 'year' : 'month')
-  const [addons, setAddons] = useState(b.plan === 'premium' ? b.addons : 0)
   const per = t(interval === 'year' ? 'plan.perYear' : 'plan.perMonth')
   const short = t(interval === 'year' ? 'plan.yr' : 'plan.mo')
-  const extra = addon || { homes: 5, credits: 150, max: 10 }
   const locked = paid && b.source === 'stripe'
-  const tiers = ['entry', 'premium']
 
   return (
     <section className="tiers" aria-labelledby="p-choose">
@@ -255,21 +286,20 @@ function Tiers({ b, prices, plans, addon, busy, run, managed }) {
       </div>
       {locked && <p className="fine">{t('plan.intervalLocked')}</p>}
       <div className="tiers__grid">
-        {tiers.map((tier) => {
+        {['entry', 'premium'].map((tier) => {
           const p = plans?.[tier] || { homes: tier === 'entry' ? 2 : 5, credits: tier === 'entry' ? 150 : 300 }
-          const n = tier === 'premium' ? addons : 0
-          const price = planPrice(prices, tier, interval, n)
+          const price = planPrice(prices, tier, interval)
           const current = paid && b.plan === tier
-          const sameAddons = current && b.addons === n
           const key = `tier:${tier}`
-          let label
-          if (!paid) label = t('plan.start', { plan: t(`plan.name.${tier}`), price: `${money(price, lang)}${short}` })
-          else if (!current) label = t('plan.switch', { plan: t(`plan.name.${tier}`), price: `${money(price, lang)}${short}` })
-          else if (!sameAddons) label = t('plan.update', { price: `${money(price, lang)}${short}` })
+          const label = !paid
+            ? t('plan.start', { plan: t(`plan.name.${tier}`), price: `${money(price, lang)}${short}` })
+            : !current
+              ? t('plan.switch', { plan: t(`plan.name.${tier}`), price: `${money(price, lang)}${short}` })
+              : null
           const act = () =>
             !paid
-              ? run(key, () => subscribe({ tier, interval, addons: n }), () => t('plan.welcome', { plan: t(`plan.name.${tier}`) }))
-              : run(key, () => changePlan({ tier, addons: n }), () => t('plan.changed', { plan: t(`plan.name.${tier}`) }))
+              ? run(key, () => subscribe({ tier, interval }), () => t('plan.welcome', { plan: t(`plan.name.${tier}`) }))
+              : run(key, () => changePlan({ tier }), () => t('plan.changed', { plan: t(`plan.name.${tier}`) }))
           return (
             <article key={tier} className={`plan__card tiers__card ${tier === 'premium' ? 'plan__card--pro' : ''} ${current ? 'is-current' : ''}`}>
               <p className="plan__label">{t(`plan.tier.${tier}.tag`)}</p>
@@ -278,31 +308,14 @@ function Tiers({ b, prices, plans, addon, busy, run, managed }) {
                 {money(prices[tier][interval], lang)} <span>{per}</span>
               </p>
               <ul>
-                <li>{t('plan.f.homes', { n: p.homes + n * extra.homes })}</li>
-                <li>{t('plan.f.credits', { n: p.credits + n * extra.credits })}</li>
+                <li>{t('plan.f.homes', { n: p.homes })}</li>
+                <li>{t('plan.f.credits', { n: p.credits })}</li>
                 <li>{t('plan.f.designs')}</li>
                 <li>{t('plan.f.emails')}</li>
                 <li>{t('plan.f.tracking')}</li>
                 <li>{t('plan.f.lang')}</li>
+                {tier === 'premium' && <li className="tiers__extra">{t('plan.f.extras')}</li>}
               </ul>
-              {tier === 'premium' && (
-                <div className="addon">
-                  <div className="addon__row">
-                    <span className="addon__label">{t('plan.addon.label')}</span>
-                    <div className="stepper">
-                      <button type="button" aria-label={t('plan.addon.less')} disabled={addons <= 0} onClick={() => setAddons((x) => Math.max(0, x - 1))}>
-                        −
-                      </button>
-                      <output aria-live="polite">{addons}</output>
-                      <button type="button" aria-label={t('plan.addon.more')} disabled={addons >= extra.max} onClick={() => setAddons((x) => Math.min(extra.max, x + 1))}>
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <p className="fine">{t('plan.addon.each', { price: money(prices.addon[interval], lang), per })}</p>
-                  {addons > 0 && <p className="addon__total">{t('plan.addon.total', { homes: p.homes + addons * extra.homes, credits: p.credits + addons * extra.credits })} · {money(price, lang)} {per}</p>}
-                </div>
-              )}
               {label ? (
                 <button type="button" className={`btn ${tier === 'premium' ? 'btn--glow' : 'btn--ink'}`} disabled={!!busy} onClick={act}>
                   {busy === key ? t('auth.working') : label}
