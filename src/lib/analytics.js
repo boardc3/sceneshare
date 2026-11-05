@@ -137,9 +137,14 @@ export const flushEvents = (beacon = false) => flush(beacon)
 
 // Errors always go out (no visitor id, no session id): they are how we fix things.
 let errorsSent = 0
+// Errors from scripts the browser itself injects (in-app browsers of Facebook,
+// Instagram, WeChat, crypto wallets, Firefox iOS reader) — not Sceneshare's code.
+const NOT_OURS = /window\.ethereum|__firefox__|webkit\.messageHandlers|WeixinJSBridge|instantSearchSDKJSBridge|zaloJSV2|__gCrWeb|ResizeObserver loop/
 export function reportError(error, extra = {}) {
-  if (errorsSent++ > 20) return
   const message = String(error?.message || error || 'unknown').slice(0, 500)
+  // "Script error." with no stack is a cross-origin script we can't see into.
+  if (NOT_OURS.test(message) || (message === 'Script error.' && !error?.stack)) return
+  if (errorsSent++ > 20) return
   sendNow([{ name: 'client_error', path: location.pathname, at: new Date().toISOString(), props: { message, stack: String(error?.stack || '').slice(0, 1500), ...extra } }], { anonymous: true })
   logError({ source: 'browser', code: extra.source || 'error', message, detail: [String(error?.stack || '').slice(0, 2500), Object.keys(extra).length ? JSON.stringify(extra).slice(0, 1200) : null].filter(Boolean).join('\n') })
 }

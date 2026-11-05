@@ -83,7 +83,8 @@ async function write(req, res) {
   if (op === 'exterior.fetch') {
     const cur = normalizeProperty(row.data)
     if (cur.exteriorChecked || !cur.address?.lat) return send(res, 200, { ok: true, property: { ...cur, updatedAt: new Date().toISOString() }, exterior: { skipped: true } })
-    const [sv, air] = await Promise.all([streetView(cur.address), aerial(cur.address)])
+    const hasAerial = cur.photos.some((ph) => ph.source === 'aerial')
+    const [sv, air] = await Promise.all([streetView(cur.address), hasAerial ? { ok: false, reason: 'have' } : aerial(cur.address)])
     const keep = async (shot, source, kind, credit, caption) => {
       if (!shot.ok) return null
       try {
@@ -195,7 +196,10 @@ async function write(req, res) {
         const street = exterior?.street && !have.has('streetview') ? [exterior.street] : []
         const air = exterior?.aerial && !have.has('aerial') ? [exterior.aerial] : []
         // Street view leads (the first thing a buyer sees is the house); the aerial closes.
-        return { ...p, photos: [...street, ...p.photos, ...air], exteriorChecked: true, exterior: exterior ? { street: Boolean(exterior.street), aerial: Boolean(exterior.aerial), reasons: exterior.reasons, at: new Date().toISOString() } : p.exterior }
+        // Done for good once Street View answered (an image, or no coverage here). A
+        // refused key, a timeout or an outage leaves the home to try again next time.
+        const final = Boolean(exterior?.street) || /zero_results|not_found/.test(exterior?.reasons?.street || '') || have.has('streetview')
+        return { ...p, photos: [...street, ...p.photos, ...air], exteriorChecked: final, exterior: exterior ? { street: Boolean(exterior.street) || have.has('streetview'), aerial: Boolean(exterior.aerial) || have.has('aerial'), reasons: exterior.reasons, at: new Date().toISOString() } : p.exterior }
       }
       case 'design.delete':
         if (!d) return false
