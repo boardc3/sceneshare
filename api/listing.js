@@ -74,14 +74,16 @@ export default route(
           return { source: 'zillow', ...(await fetchZillow(hit.zpid, { deadline })) }
         }),
         safe('redfin', async () => {
-          const url = await findRedfinUrl(addr)
-          if (!url) return miss('redfin', 'not_on_redfin')
-          return { source: 'redfin', ...(await fetchRedfin(url, { deadline })) }
+          const log = {}
+          const url = await findRedfinUrl(addr, log)
+          if (!url) return { ...miss('redfin', 'not_on_redfin'), search: log.search }
+          return { source: 'redfin', search: log.search, ...(await fetchRedfin(url, { deadline })) }
         }),
         safe('homes', async () => {
-          const url = await findHomesUrl(addr)
-          if (!url) return miss('homes', 'not_on_homes')
-          return { source: 'homes', ...(await fetchHomes(url, { deadline })) }
+          const log = {}
+          const url = await findHomesUrl(addr, log)
+          if (!url) return { ...miss('homes', 'not_on_homes'), search: log.search }
+          return { source: 'homes', search: log.search, ...(await fetchHomes(url, { deadline })) }
         }),
       ])
       results = { zillow: z, redfin: r, homes: h }
@@ -164,7 +166,7 @@ export default route(
       address: addr.formatted || addr.oneLine,
       propertyId,
       lang: body.lang,
-      meta: { zillow: { ok: z.ok, n: z.photos?.length || 0, tried: z.tried }, redfin: { ok: r.ok, n: r.photos?.length || 0, tried: r.tried }, homes: { ok: hm.ok, n: hm.photos?.length || 0, tried: hm.tried }, link: link?.source || null, used: pick?.source || null, stored: photos.length },
+      meta: { zillow: { ok: z.ok, n: z.photos?.length || 0, tried: z.tried }, redfin: { ok: r.ok, n: r.photos?.length || 0, tried: r.tried, search: r.search, url: r.url || null }, homes: { ok: hm.ok, n: hm.photos?.length || 0, tried: hm.tried, search: hm.search, url: hm.url || null, reason: hm.reason || null }, link: link?.source || null, used: pick?.source || null, stored: photos.length },
     })
     res._meta = { propertyId, photos: photos.length, used: pick?.source || null }
 

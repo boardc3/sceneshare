@@ -1,4 +1,4 @@
-import { scraperGoogle, scraperLadder } from './scraper.js'
+import { scraperLadder, webSearch } from './scraper.js'
 
 // Redfin's stingray autocomplete refuses plain and premium ScraperAPI requests
 // (500 after ~56 s, observed 2026-11-04), so the property page is found through
@@ -11,9 +11,11 @@ const slug = (s = '') =>
     .replace(/\s+/g, '-')
     .toLowerCase()
 
-export async function findRedfinUrl(addr) {
+export async function findRedfinUrl(addr, log = {}) {
   if (!addr.streetNumber || !addr.zip) return null
-  const links = await scraperGoogle(`redfin ${addr.streetNumber} ${addr.route} ${addr.unit ? `Unit ${addr.unit} ` : ''}${addr.city} ${addr.state} ${addr.zip}`)
+  const found = await webSearch(`redfin ${addr.streetNumber} ${addr.route} ${addr.unit ? `Unit ${addr.unit} ` : ''}${addr.city} ${addr.state} ${addr.zip}`, { want: /redfin\.com\/.+\/home\/\d+/ })
+  log.search = found.tried
+  const links = found.links
   const want = `${addr.streetNumber}-`
   const routeWord = slug(addr.route).split('-')[0]
   const unit = (addr.unit || '').replace(/^#/, '').toLowerCase()

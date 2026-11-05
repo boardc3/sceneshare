@@ -1,4 +1,4 @@
-import { scraperGoogle, scraperLadder } from './scraper.js'
+import { scraperLadder, webSearch } from './scraper.js'
 
 // Homes.com (CoStar). Its pages and image CDN sit behind Akamai, so both go through
 // ScraperAPI. The property page is found through ScraperAPI's Google endpoint and
@@ -42,10 +42,11 @@ export function homesSlugMatches(pageSlug, addr) {
   return true
 }
 
-export async function findHomesUrl(addr) {
+export async function findHomesUrl(addr, log = {}) {
   if (!addr.streetNumber || !addr.zip) return null
-  const links = await scraperGoogle(`homes.com ${addr.streetNumber} ${addr.route} ${addr.unit ? `#${addr.unit} ` : ''}${addr.city} ${addr.state} ${addr.zip}`)
-  for (const l of links) {
+  const found = await webSearch(`homes.com ${addr.streetNumber} ${addr.route} ${addr.unit ? `#${addr.unit} ` : ''}${addr.city} ${addr.state} ${addr.zip}`, { want: /homes\.com\/property\// })
+  log.search = found.tried
+  for (const l of found.links) {
     if (!isHomesUrl(l)) continue
     const m = PAGE.exec(new URL(l).pathname)
     if (homesSlugMatches(m[1], addr)) return `https://www.homes.com/property/${m[1]}/${m[2]}/`
