@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { translate, useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { post, shown } from '../lib/api.js'
+import { get, post, shown } from '../lib/api.js'
 import { ensureTerms, useAuth } from '../lib/auth.js'
 import { isEmail } from '../lib/format.js'
 import { Modal } from './Chrome.jsx'
@@ -105,6 +105,7 @@ export default function ShareBar({ id, address, owner = false, disabled = false,
           owner={owner}
           lang={L}
           defaultName={user?.name || ''}
+          signedIn={!!user}
           linkFor={linkFor}
           onClose={() => setEmailOpen(false)}
           onShared={onShared}
@@ -114,8 +115,55 @@ export default function ShareBar({ id, address, owner = false, disabled = false,
   )
 }
 
-function EmailShare({ id, address, owner, lang, defaultName, linkFor, onClose, onShared }) {
+// People this account has emailed homes to before: tick them instead of retyping.
+function PastPeople({ contacts, picked, onToggle }) {
+  const { t, lang } = useI18n()
+  const [q, setQ] = useState('')
+  const [all, setAll] = useState(false)
+  const shownList = useMemo(() => {
+    const f = contacts.filter((c) => !q || c.email.includes(q.trim().toLowerCase()))
+    return all || q ? f : f.slice(0, 8)
+  }, [contacts, q, all])
+  const date = (iso) => new Date(iso).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
+  return (
+    <fieldset className="people">
+      <legend>{t('people.title')}</legend>
+      {contacts.length > 8 && <input type="search" className="people__search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('people.search')} aria-label={t('people.search')} />}
+      <ul className="people__list">
+        {shownList.map((c) => (
+          <li key={c.email}>
+            <label className={`people__item ${picked.includes(c.email) ? 'is-on' : ''}`}>
+              <input type="checkbox" checked={picked.includes(c.email)} onChange={() => onToggle(c.email)} />
+              <span className="people__email">{c.email}</span>
+              <span className="people__meta">
+                {t(c.homes === 1 ? 'people.homes1' : 'people.homes', { n: c.homes })} · {t('people.last', { date: date(c.last_at) })}
+                {c.opens > 0 && ` · ${t('people.opened')}`}
+              </span>
+              {c.has_this && <span className="people__tag">{t('people.hasThis')}</span>}
+            </label>
+          </li>
+        ))}
+      </ul>
+      {!q && !all && contacts.length > 8 && (
+        <button type="button" className="linkbtn" onClick={() => setAll(true)}>
+          {t('people.more', { n: contacts.length - 8 })}
+        </button>
+      )}
+    </fieldset>
+  )
+}
+
+function EmailShare({ id, address, owner, lang, defaultName, signedIn, linkFor, onClose, onShared }) {
   const { t } = useI18n()
+  const [contacts, setContacts] = useState([])
+  const [picked, setPicked] = useState([])
+  useEffect(() => {
+    if (!signedIn) return
+    get(`/api/shares?contacts=1&propertyId=${id}`)
+      .then((d) => setContacts(d.contacts || []))
+      .catch((e) => shown(e)) // the form still works without the list
+  }, [signedIn, id])
+  const toggle = (email) => setPicked((p) => (p.includes(email) ? p.filter((x) => x !== email) : [...p, email]))
   const tl = (k, vars) => translate(lang, k, vars)
   const [to, setTo] = useState('')
   const [name, setName] = useState(defaultName)
@@ -128,7 +176,7 @@ function EmailShare({ id, address, owner, lang, defaultName, linkFor, onClose, o
   const submit = async (e) => {
     e.preventDefault()
     setError('')
-    const list = to.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean)
+    const list = [...new Set([...picked, ...to.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean)])]
     if (!list.length) return setError(t('share.form.needTo'))
     const bad = list.find((x) => !isEmail(x))
     if (bad) return setError(t('share.form.badTo', { email: bad }))
@@ -141,10 +189,12 @@ function EmailShare({ id, address, owner, lang, defaultName, linkFor, onClose, o
       track('share_email', { recipients: list.length, sent: d.sent, owner, linkLang: lang, tracked }, { propertyId: id })
       if (d.sent) setDone('sent')
       else {
+        // Anyone the server couldn't email (or everyone, when it doesn't send) goes to the mail app.
+        const mailTo = d.failed?.length ? d.failed : list
         const subject = tl(owner ? 'share.mailSubjectOwner' : 'share.mailSubject', { address })
         const link = tracked ? linkFor(sid) : `${window.location.origin}/p/${id}${lang === 'zh' ? '?lang=zh' : ''}`
         const body = `${message.trim()}\n\n${address}\n${link}\n${name.trim() ? `\n— ${name.trim()}\n` : ''}`
-        window.location.href = `mailto:${list.map(encodeURIComponent).join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+        window.location.href = `mailto:${mailTo.map(encodeURIComponent).join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
         setDone('mailapp')
       }
     } catch (err) {
@@ -171,10 +221,12 @@ function EmailShare({ id, address, owner, lang, defaultName, linkFor, onClose, o
       ) : (
         <form onSubmit={submit} noValidate>
           <p>{address}</p>
+          {contacts.length > 0 && <PastPeople contacts={contacts} picked={picked} onToggle={toggle} />}
           <label className="field">
-            <span>{t('share.form.to')}</span>
+            <span>{contacts.length ? t('people.new') : t('share.form.to')}</span>
             <input type="text" inputMode="email" autoComplete="off" value={to} onChange={(e) => setTo(e.target.value)} placeholder={t('share.form.toPh')} />
           </label>
+          {owner && <p className="fine">{t('people.perPerson')}</p>}
           <label className="field">
             <span>{t('share.form.name')}</span>
             <input type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />

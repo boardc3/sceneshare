@@ -1,8 +1,8 @@
 import { originOf, sessionUser } from '../_lib/auth.js'
 import { assertCanEmail } from '../_lib/billing.js'
 import { config, TERMS_VERSION } from '../_lib/config.js'
-import { createShare, listShares, propertyEngagement, logSubmission, markShareSent, ownerAccepted, propertyRow } from '../_lib/db.js'
-import { newId, requireOwner, validId } from '../_lib/gate.js'
+import { createShare, listShares, propertyEngagement, removeShares, shareContacts, logSubmission, markShareSent, ownerAccepted, propertyRow } from '../_lib/db.js'
+import { newId, requireOwner, requireUser, validId } from '../_lib/gate.js'
 import { ApiError, isEmail, query, readJson, route, send } from '../_lib/http.js'
 import { visitorId } from '../_lib/log.js'
 import { sendShareEmail } from '../_lib/mail.js'
@@ -18,7 +18,12 @@ export default route(
   ['GET', 'POST'],
   async (req, res) => {
     if (req.method === 'GET') {
-      const { propertyId } = query(req)
+      const { propertyId, contacts } = query(req)
+      // The signed-in person's own past recipients, for the email form.
+      if (contacts === '1') {
+        const user = await requireUser(req, res)
+        return send(res, 200, { ok: true, contacts: await shareContacts(user.id, validId(propertyId) ? propertyId : null) })
+      }
       const { user } = await requireOwner(req, res, propertyId)
       const [list, engagement] = await Promise.all([listShares(propertyId), propertyEngagement(propertyId, user.id).catch(() => null)])
       return send(res, 200, { ok: true, ...list, engagement })
@@ -55,22 +60,38 @@ export default route(
     const senderName = String(body.name || user?.name || '').trim().slice(0, 80) || null
     const message = String(body.message || '').trim().slice(0, 2000) || null
 
-    await createShare({ id, propertyId: row.id, userId: user?.id || null, byOwner, channel, recipients, senderName, message, lang, visitorId: visitorId(req), sent: false, tracked })
-
-    // Sent by us when an email service is configured; otherwise the browser opens
-    // the sender's own mail app with the tracked link filled in.
-    // Only the home's signed-in owner can have Sceneshare's server send email, so the
-    // share form can't be used as a relay; buyers get their own mail app with the
-    // link filled in.
+    // Sent by us (the owner, with an email service configured): one email and one
+    // tracked link per person, so every open maps to who opened it. Otherwise one
+    // share, and the browser opens the sender's own mail app with the link filled in.
+    const willSend = channel === 'email' && byOwner && body.send !== false && config.mailKey && config.mailFrom
     let sent = false
-    if (channel === 'email' && byOwner && body.send !== false && config.mailKey && config.mailFrom) {
-      sent = await sendShareEmail({ to: recipients, replyTo: user?.email || null, senderName, message, url, address: row.data?.address?.formatted || '', lang })
-      if (sent) await markShareSent(id)
+    let people = []
+    if (willSend) {
+      const address = row.data?.address?.formatted || ''
+      people = await Promise.all(
+        recipients.map(async (to) => {
+          const pid = newId(10)
+          const link = `${origin}/p/${row.id}${tracked ? `?s=${pid}${lang === 'zh' ? '&lang=zh' : ''}` : lang === 'zh' ? '?lang=zh' : ''}`
+          await createShare({ id: pid, batchId: id, propertyId: row.id, userId: user?.id || null, byOwner, channel, recipients: [to], senderName, message, lang, visitorId: visitorId(req), sent: false, tracked })
+          const ok = await sendShareEmail({ to: [to], replyTo: user?.email || null, senderName, message, url: link, address, lang })
+          if (ok) await markShareSent(pid)
+          return { email: to, id: pid, sent: ok }
+        }),
+      )
+      sent = people.length > 0 && people.every((x) => x.sent)
+      // Anyone we couldn't email gets the sender's mail app instead, with the batch's
+      // own tracked link — which needs its own record.
+      const missed = people.filter((x) => !x.sent).map((x) => x.email)
+      if (missed.length) await removeShares(people.filter((x) => !x.sent).map((x) => x.id))
+      if (missed.length) await createShare({ id, batchId: id, propertyId: row.id, userId: user?.id || null, byOwner, channel, recipients: missed, senderName, message, lang, visitorId: visitorId(req), sent: false, tracked })
+    } else {
+      await createShare({ id, propertyId: row.id, userId: user?.id || null, byOwner, channel, recipients, senderName, message, lang, visitorId: visitorId(req), sent: false, tracked })
     }
 
-    await logSubmission({ user, kind: 'share', propertyId: row.id, lang, address: row.data?.address?.formatted || null, meta: { shareId: id, channel, recipients: recipients.length, byOwner, sent, tracked } })
+    await logSubmission({ user, kind: 'share', propertyId: row.id, lang, address: row.data?.address?.formatted || null, meta: { shareId: id, channel, recipients: recipients.length, byOwner, sent, tracked, perPerson: people.length } })
     res._meta = { propertyId: row.id, shareId: id, channel, recipients: recipients.length, sent }
-    send(res, 200, { ok: true, id, url, sent })
+    const failed = people.filter((x) => !x.sent).map((x) => x.email)
+    send(res, 200, { ok: true, id, url, sent, people: people.map(({ email, sent: ok }) => ({ email, sent: ok })), failed })
   },
   // Sending shares is limited tightly; the owner's own stats reads are not the same thing.
   { name: 'shares', limit: { POST: { hour: 200, day: 1000 }, GET: { hour: 1200, day: 6000 } } },

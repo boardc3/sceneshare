@@ -372,6 +372,10 @@ async function migrate(s) {
   )`
   await s`create index if not exists shares_property_idx on shares (property_id, created_at desc)`
   await s`alter table share_views add column if not exists share_id text`
+  // One email to several people becomes one share per person (own tracked link),
+  // grouped by batch_id so the send still reads as one action.
+  await s`alter table shares add column if not exists batch_id text`
+  await s`create index if not exists shares_user_idx on shares (user_id, created_at desc)`
   await s`alter table shares add column if not exists tracked boolean not null default true`
 
   await s`create table if not exists privacy_requests (
@@ -388,7 +392,7 @@ async function migrate(s) {
 }
 
 // Bump when migrate() changes. A cold start then costs one query, not sixty.
-const SCHEMA_VERSION = 12
+const SCHEMA_VERSION = 13
 
 async function upToDate(s) {
   try {
@@ -643,10 +647,16 @@ export function recordView(id, { lang = null, req = null, visitorId = null, shar
 export async function createShare(sh) {
   const s = await ensure()
   if (!s) return false
-  await s`insert into shares (id, property_id, user_id, by_owner, channel, recipients, recipient_count, sender_name, message, lang, visitor_id, sent, tracked)
+  await s`insert into shares (id, property_id, user_id, by_owner, channel, recipients, recipient_count, sender_name, message, lang, visitor_id, sent, tracked, batch_id)
     values (${sh.id}, ${sh.propertyId}, ${sh.userId}, ${sh.byOwner}, ${sh.channel}, ${j(sh.recipients)}::jsonb, ${sh.recipients?.length || 0},
-      ${sh.senderName}, ${sh.message}, ${sh.lang}, ${sh.visitorId}, ${sh.sent}, ${sh.tracked !== false})`
+      ${sh.senderName}, ${sh.message}, ${sh.lang}, ${sh.visitorId}, ${sh.sent}, ${sh.tracked !== false}, ${sh.batchId || null})`
   return true
+}
+
+export async function removeShares(ids) {
+  const s = await ensure()
+  if (!s || !ids.length) return
+  await s`delete from shares where id = any(${ids})`
 }
 
 export function markShareSent(id) {
@@ -663,6 +673,23 @@ export async function listShares(propertyId) {
     from shares where property_id = ${propertyId}`
   const [views] = await s`select share_views as views from properties where id = ${propertyId}`
   return { shares, totals: { ...totals, views: views?.views || 0 } }
+}
+
+// Everyone this account has emailed a home to: how many homes, when, and whether
+// they opened their link (per-person links only). With propertyId, also whether
+// each person already has that home.
+export async function shareContacts(userId, propertyId = null) {
+  const s = await ensure()
+  if (!s) return []
+  const rows = await s`select lower(r.email) as email, count(distinct sh.property_id)::int as homes, count(*)::int as shares, max(sh.created_at) as last_at,
+      coalesce(sum(sh.opens) filter (where sh.recipient_count = 1), 0)::int as opens, max(sh.last_opened_at) filter (where sh.recipient_count = 1) as last_opened_at,
+      bool_or(sh.property_id = ${propertyId || ''}) as has_this,
+      (array_agg(distinct coalesce(p.data->>'nickname', p.formatted_address)) filter (where p.id is not null))[1:3] as home_names
+    from shares sh cross join jsonb_array_elements_text(coalesce(sh.recipients, '[]'::jsonb)) r(email)
+    left join properties p on p.id = sh.property_id
+    where sh.user_id = ${userId} and sh.channel = 'email'
+    group by 1 order by max(sh.created_at) desc limit 300`
+  return rows
 }
 
 // ---------------------------------------------------------------- engagement (lib/engagement.js)

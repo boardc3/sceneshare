@@ -5361,3 +5361,76 @@ body.is-modal {
     font-size: 0.68rem;
   }
 }
+
+/* ---------- past recipients in the email form (ShareBar.jsx) ---------- */
+.people {
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.people legend {
+  font-size: 0.875rem;
+  margin-bottom: 6px;
+}
+.people__search {
+  width: 100%;
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.people__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+}
+.people__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: 'box email tag' 'box meta tag';
+  align-items: center;
+  gap: 0 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.people__item.is-on {
+  border-color: var(--glow);
+  background: rgba(232, 165, 72, 0.1);
+}
+.people__item input {
+  grid-area: box;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ink);
+}
+.people__email {
+  grid-area: email;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.people__meta {
+  grid-area: meta;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.people__tag {
+  grid-area: tag;
+  font-size: 0.7rem;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: var(--fog);
+  color: var(--muted);
+  white-space: nowrap;
+}
