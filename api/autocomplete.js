@@ -16,7 +16,8 @@ export default route(
       const addr = await geocode({ address: q.trim().slice(0, 200), lang }).catch(() => null)
       if (!addr?.streetNumber) return send(res, 200, { ok: true, units: [] })
       const [z, m] = await Promise.all([unitsAt(addr), unitsNear(`${addr.streetNumber} ${addr.route}, ${addr.city}, ${addr.state} ${addr.zip}`, lang)])
-      const list = [...new Set([...z, ...m])].sort(natural).slice(0, 300)
+      // Zillow sees a single home listed at the address: ignore old or guessed unit records.
+      const list = z.single ? [] : [...new Set([...z.units, ...m])].sort(natural).slice(0, 300)
       res._meta = { units: list.length }
       return send(res, 200, { ok: true, units: list, unit: unitFrom(q) || addr.unit || null }, { 'Cache-Control': 'private, max-age=600' })
     }

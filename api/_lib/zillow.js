@@ -41,18 +41,24 @@ export async function unitsAt({ streetNumber, route, city, state, zip }) {
       const q = new URLSearchParams({ q: text, resultTypes: 'allAddress', resultCount: '12' })
       const r = await fetchWithTimeout(`https://www.zillowstatic.com/autocomplete/v3/suggestions?${q}`, { headers: { 'User-Agent': UA } }, 8000)
       if (!r.ok) return []
-      return ((await r.json()).results || []).map((x) => x.display || '')
+      return ((await r.json()).results || []).map((x) => ({ display: x.display || '', type: x.metaData?.addressType || '' }))
     } catch {
       return []
     }
   }
   const out = new Set()
   let complex = false
-  const read = (displays) => {
-    for (const display of displays) {
+  let bareActive = false // the street address itself is listed now, with no unit
+  let unitActive = false // some unit is listed now
+  const read = (rows) => {
+    for (const { display, type } of rows) {
       if ((street && !display.toLowerCase().includes(street)) || (zip && !display.includes(zip))) continue
       const m = /(?:#|\b(?:apt|unit|ste|suite)\.?\s*#?)\s*([A-Za-z0-9-]{1,12})\b/i.exec(display)
-      if (!m) continue
+      if (!m) {
+        if (sameStreetNumber(display, streetNumber) && ACTIVE.test(type)) bareActive = true
+        continue
+      }
+      if (ACTIVE.test(type)) unitActive = true
       const u = m[1].toUpperCase()
       // A complex filed under one address: "1 Park Newport Dr #4000-204" is unit 204 of building 4000.
       const inBuilding = u.startsWith(`${String(streetNumber).toUpperCase()}-`)
@@ -64,8 +70,15 @@ export async function unitsAt({ streetNumber, route, city, state, zip }) {
   }
   read((await Promise.all([`${base}${tail}`, ...['1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'PH'].map((p) => `${base} #${p}${tail}`)].map(ask))).flat())
   if (complex) read((await Promise.all(['1', '2', '3', '4', '5', '6'].map((p) => ask(`${base} #${streetNumber}-${p}${tail}`)))).flat())
-  return [...out]
+  // A house on a lot that once held units (21712 Wesley Dr, Laguna Beach: a single-family
+  // home listed for sale, plus nine old sold records #1–#9). When the address itself is
+  // listed now and none of the units is, the units are history: no picker.
+  const historic = bareActive && !unitActive
+  return { units: historic ? [] : [...out], single: historic }
 }
+
+// Zillow's addressType for a record that's on the market now (sold_address is history).
+const ACTIVE = /^(forsale|forrent|pending|comingsoon|coming_soon|newconstruction)/i
 
 const sameStreetNumber = (display = '', num = '') => !!num && display.trim().split(/\s+/)[0] === String(num)
 
