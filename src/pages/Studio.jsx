@@ -18,13 +18,13 @@ import { defaultSides, designLabel, designName, sideImage, shortSideLabel } from
 import { lotSqft } from '../lib/format.js'
 import { useBilling } from '../lib/billing.js'
 import { useHouseRun } from '../lib/houseRun.js'
+import { useSortable } from '../lib/sortable.js'
 import { Link, useRouter } from '../router.jsx'
 
 const SOURCE_NAMES = { zillow: 'Zillow', redfin: 'Redfin', homes: 'Homes.com' }
 
 export const STYLES = ['signature', 'coastal-modern', 'pure-form', 'resort-living', 'timeless-estate', 'urban-penthouse', 'executive-modern', 'avant-garde']
 export const LIGHTS = ['daylight', 'golden', 'twilight', 'original']
-const ORDER = { zillow: 0, redfin: 0, homes: 0, owner: 1, streetview: 2, google: 3 }
 
 // One request with patient retries (for single-photo actions).
 async function withRetry(fn, tries = 3) {
@@ -109,7 +109,8 @@ export default function Studio({ id }) {
     if (ready) load()
   }, [ready, user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const photos = useMemo(() => [...(property?.photos || [])].sort((a, b) => (ORDER[a.source] ?? 9) - (ORDER[b.source] ?? 9)), [property?.photos])
+  // The owner's order (drag to reorder); the share page shows the same order.
+  const photos = useMemo(() => property?.photos || [], [property?.photos])
   const designs = property?.designs || []
 
   useEffect(() => {
@@ -156,8 +157,12 @@ export default function Studio({ id }) {
   const { run, go, stop, close } = useHouseRun({ propertyId: id, lang, onRendered, onFinished })
 
   const visible = useMemo(() => visiblePhotos({ photos }), [photos])
+  // Imagery that's shown as captured, never restyled (aerial always; Street View when
+  // processing it is switched off).
+  const locked = useCallback((p) => p?.source === 'aerial' || (p?.source === 'streetview' && features.streetViewEdit === false), [features.streetViewEdit])
+  const editable = useMemo(() => visible.filter((p) => !locked(p)), [visible, locked])
   const right = designs.find((d) => d.id === sides.right) || null
-  const missing = right ? visible.filter((p) => !right.picks[p.id]) : []
+  const missing = right ? editable.filter((p) => !right.picks[p.id]) : []
   const photo = photos.find((p) => p.id === selected) || null
   const leftImg = sideImage(property, sides.left, photo)
   const rightImg = sides.right ? sideImage(property, sides.right, photo) : null
@@ -169,7 +174,7 @@ export default function Studio({ id }) {
 
   // "Restyle this house": a new design, every visible photo, behind the loading block.
   const restyleHouse = async () => {
-    if (!visible.length) return setError(t('studio.needPhotos'))
+    if (!editable.length) return setError(t('studio.needPhotos'))
     setError('')
     setStarting(true)
     try {
@@ -178,7 +183,7 @@ export default function Studio({ id }) {
       setProperty(next)
       setSides({ left: 'original', right: d.design.id })
       setNote('')
-      go(d.design, visible.map((p) => p.id), { label: designLabel(d.design, next.designs.length - 1, t) })
+      go(d.design, editable.map((p) => p.id), { label: designLabel(d.design, next.designs.length - 1, t) })
     } catch (e) {
       setError(shown(e) || t('err.generic'))
     } finally {
@@ -187,7 +192,7 @@ export default function Studio({ id }) {
   }
 
   const finishDesign = (d) => {
-    const ids = visible.filter((p) => !d.picks[p.id]).map((p) => p.id)
+    const ids = editable.filter((p) => !d.picks[p.id]).map((p) => p.id)
     if (ids.length) go(d, ids, { label: designLabel(d, designs.indexOf(d), t) })
   }
 
@@ -233,6 +238,63 @@ export default function Studio({ id }) {
       return null
     }
   }
+
+  // Every listing gets an exterior (Chris, 2026-11-05): the street view of the house
+  // (or an aerial of the lot), fetched once per home and placed first. The street view
+  // then goes through "Make it professional" on its own, like any other photo.
+  const exteriorAsked = useRef(false)
+  const [exteriorMsg, setExteriorMsg] = useState('')
+  useEffect(() => {
+    if (status !== 'ready' || !property?.address || property.exteriorChecked || exteriorAsked.current) return
+    exteriorAsked.current = true
+    setExteriorMsg(t('ext.finding'))
+    post('/api/properties', { op: 'exterior.fetch', propertyId: id, lang })
+      .then(async (d) => {
+        const next = normalizeProperty(d.property)
+        setProperty(next)
+        const sv = next.photos.find((p) => p.source === 'streetview')
+        track('exterior_fetch', { street: Boolean(d.property?.exterior?.street), aerial: Boolean(d.property?.exterior?.aerial) }, { propertyId: id })
+        if (!sv || features.render === false || features.streetViewEdit === false || next.designs.some((x) => x.picks[sv.id])) return setExteriorMsg(sv || next.photos.some((p) => p.source === 'aerial') ? '' : t('ext.none'))
+        // Make the street view professional, quietly (one credit).
+        setExteriorMsg(t('ext.polishing'))
+        setBusy((b) => ({ ...b, [sv.id]: 'redo' }))
+        try {
+          const c = await post('/api/properties', { op: 'design.create', propertyId: id, photoIds: [sv.id], mode: 'cleanup', light: 'daylight', note: 'exterior from street view: crisp, bright, natural sky, true colour', lang })
+          const r = await withRetry(() => post('/api/render', { propertyId: id, designId: c.design.id, photoId: sv.id, lang }))
+          setProperty((p) => addVersion(p, sv.id, r.version))
+          const f = await post('/api/properties', { op: 'design.finish', propertyId: id, designId: c.design.id, failed: [] })
+          setProperty(normalizeProperty(f.property))
+          setExteriorMsg('')
+          track('exterior_polished', null, { propertyId: id })
+        } catch (e) {
+          setExteriorMsg(shown(e) || t('ext.polishFailed'))
+        } finally {
+          setBusy((b) => {
+            const n = { ...b }
+            delete n[sv.id]
+            return n
+          })
+        }
+      })
+      .catch((e) => setExteriorMsg(shown(e) || ''))
+  }, [status, property, id, lang, t, features.render, features.streetViewEdit])
+
+  // Drag to reorder (saved for the share page too).
+  const commitOrder = useCallback(
+    (ids) => {
+      setProperty((p) => ({ ...p, photos: ids.map((x) => p.photos.find((ph) => ph.id === x)).filter(Boolean) }))
+      post('/api/properties', { op: 'photos.order', propertyId: id, ids, lang })
+        .then((d) => setProperty(normalizeProperty(d.property)))
+        .catch((e) => {
+          setError(shown(e) || t('err.generic'))
+          load()
+        })
+      track('photos_reorder', { n: ids.length }, { propertyId: id })
+    },
+    [id, lang, t, load],
+  )
+  const sortIds = useMemo(() => photos.map((p) => p.id), [photos])
+  const sort = useSortable(sortIds, commitOrder)
 
   // Discarding a round deletes its images for good and takes them off the share page.
   const deleteDesign = async (d) => {
@@ -498,6 +560,7 @@ export default function Studio({ id }) {
                 {right && !rightImg && !photoBusy && <span className="viewer__hint"> — {t('studio.notInDesign')}</span>}
                 {!designs.length && <span className="viewer__hint"> — {t('studio.noVersion')}</span>}
               </p>
+              {locked(photo) && <p className="viewer__base">{t(photo.source === 'aerial' ? 'ext.aerialNote' : 'ext.svNote')}</p>}
               {photo.base && (
                 <p className="viewer__base">
                   ✦ {t('base.using')}{' '}
@@ -516,13 +579,23 @@ export default function Studio({ id }) {
 
               {!right && (
                 <div className="phototools__row phototools__row--solo">
-                  <button type="button" className="btn btn--ink btn--small" onClick={() => setPrPhotos([photo])} disabled={!canRender || photo.hidden || run?.status === 'running'}>
-                    {t('pr.open')}
-                  </button>
+                  <span className="phototools__move">
+                    <button type="button" className="btn btn--quiet btn--small" onClick={() => sort.nudge(photo.id, -1)} disabled={sort.order.indexOf(photo.id) <= 0} aria-label={t('order.earlier')}>
+                      ←
+                    </button>
+                    <button type="button" className="btn btn--quiet btn--small" onClick={() => sort.nudge(photo.id, 1)} disabled={sort.order.indexOf(photo.id) >= sort.order.length - 1} aria-label={t('order.later')}>
+                      →
+                    </button>
+                  </span>
+                  {!locked(photo) && (
+                    <button type="button" className="btn btn--ink btn--small" onClick={() => setPrPhotos([photo])} disabled={!canRender || photo.hidden || run?.status === 'running'}>
+                      {t('pr.open')}
+                    </button>
+                  )}
                   <button type="button" className="btn btn--quiet btn--small" onClick={() => op({ op: 'photo.hide', photoId: photo.id, hidden: !photo.hidden }, photo.hidden ? 'photo_show' : 'photo_hide')}>
                     {photo.hidden ? t('studio.unhide') : t('studio.hide')}
                   </button>
-                  {photo.source === 'owner' && (
+                  {['owner', 'streetview', 'aerial'].includes(photo.source) && (
                     <button type="button" className="btn btn--quiet btn--small btn--danger" onClick={() => window.confirm(t('studio.removeConfirm')) && op({ op: 'photo.delete', photoId: photo.id }, 'photo_delete')}>
                       {t('studio.remove')}
                     </button>
@@ -552,12 +625,24 @@ export default function Studio({ id }) {
                     </form>
                   )}
                   <div className="phototools__row">
-                    <button type="button" className="btn btn--quiet btn--small" onClick={() => setPrPhotos([photo])} disabled={!canRender || photo.hidden || run?.status === 'running'}>
-                      {t('pr.open')}
+                  <span className="phototools__move">
+                    <button type="button" className="btn btn--quiet btn--small" onClick={() => sort.nudge(photo.id, -1)} disabled={sort.order.indexOf(photo.id) <= 0} aria-label={t('order.earlier')}>
+                      ←
                     </button>
-                    <button type="button" className="btn btn--quiet btn--small" onClick={() => photoAction(photo, 'redo')} disabled={!!photoBusy || !canRender || photo.hidden}>
-                      {rightImg ? t('studio.redo') : t('studio.addToDesign')}
+                    <button type="button" className="btn btn--quiet btn--small" onClick={() => sort.nudge(photo.id, 1)} disabled={sort.order.indexOf(photo.id) >= sort.order.length - 1} aria-label={t('order.later')}>
+                      →
                     </button>
+                  </span>
+                    {!locked(photo) && (
+                      <>
+                        <button type="button" className="btn btn--quiet btn--small" onClick={() => setPrPhotos([photo])} disabled={!canRender || photo.hidden || run?.status === 'running'}>
+                          {t('pr.open')}
+                        </button>
+                        <button type="button" className="btn btn--quiet btn--small" onClick={() => photoAction(photo, 'redo')} disabled={!!photoBusy || !canRender || photo.hidden}>
+                          {rightImg ? t('studio.redo') : t('studio.addToDesign')}
+                        </button>
+                      </>
+                    )}
                     {rightImg && (
                       <a className="btn btn--quiet btn--small" href={rightImg.src} download={`sceneshare-${id}-${photo.id}.jpg`} target="_blank" rel="noreferrer" onClick={() => track('download', null, { propertyId: id })}>
                         {t('studio.download')}
@@ -566,7 +651,7 @@ export default function Studio({ id }) {
                     <button type="button" className="btn btn--quiet btn--small" onClick={() => op({ op: 'photo.hide', photoId: photo.id, hidden: !photo.hidden }, photo.hidden ? 'photo_show' : 'photo_hide')}>
                       {photo.hidden ? t('studio.unhide') : t('studio.hide')}
                     </button>
-                    {photo.source === 'owner' && (
+                    {['owner', 'streetview', 'aerial'].includes(photo.source) && (
                       <button
                         type="button"
                         className="btn btn--quiet btn--small btn--danger"
@@ -673,7 +758,7 @@ export default function Studio({ id }) {
           </div>
           {(() => {
             // Own photos that haven't been made professional yet: do them all at once.
-            const raw = visible.filter((p) => p.source === 'owner' && !p.base && !designs.some((d) => BASE_MODES.includes(d.mode) && d.picks[p.id]))
+            const raw = editable.filter((p) => (p.source === 'owner' || p.source === 'streetview') && !p.base && !designs.some((d) => BASE_MODES.includes(d.mode) && d.picks[p.id]))
             return raw.length > 1 && !uploading && canRender && run?.status !== 'running' ? (
               <button type="button" className="btn btn--glow btn--small rail__pro" onClick={() => setPrPhotos(raw)}>
                 {t('own.proAll', { n: raw.length })}
@@ -701,12 +786,31 @@ export default function Studio({ id }) {
               )}
             </form>
           )}
-          <ul className="thumbs">
-            {photos.map((p) => {
+          {exteriorMsg && (
+            <p className="rail__status" role="status">
+              {exteriorMsg === t('ext.finding') || exteriorMsg === t('ext.polishing') ? <span className="spinner spinner--small" aria-hidden="true" /> : null} {exteriorMsg}
+            </p>
+          )}
+          {photos.length > 1 && <p className="rail__hint">{t('order.hint')}</p>}
+          <ul className={`thumbs ${sort.dragging ? 'is-sorting' : ''}`} ref={sort.box}>
+            {sort.order.map((pid, i) => {
+              const p = photos.find((x) => x.id === pid)
+              if (!p) return null
               const img = (sides.right && sideImage(property, sides.right, p)) || p
               return (
-                <li key={p.id} className={p.hidden ? 'is-hidden' : ''}>
-                  <button type="button" aria-pressed={p.id === selected} onClick={() => setSelected(p.id)} aria-label={`${t('studio.photo')} ${photos.indexOf(p) + 1}${p.hidden ? ` (${t('studio.hidden')})` : ''}`}>
+                <li key={p.id} className={`${p.hidden ? 'is-hidden' : ''} ${sort.dragging === p.id ? 'is-dragging' : ''}`} {...sort.handleProps(p.id)}>
+                  <button
+                    type="button"
+                    aria-pressed={p.id === selected}
+                    onClick={() => setSelected(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowUp')) (e.preventDefault(), sort.nudge(p.id, -1))
+                      if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowDown')) (e.preventDefault(), sort.nudge(p.id, 1))
+                    }}
+                    aria-label={`${t('studio.photo')} ${i + 1}${p.hidden ? ` (${t('studio.hidden')})` : ''}`}
+                    aria-describedby="order-help"
+                  >
+                    <span className="thumbs__n" aria-hidden="true">{i + 1}</span>
                     <Thumb src={img.src} width={p.width} height={p.height} />
                     {busy[p.id] && <span className="thumbs__busy spinner spinner--small" aria-hidden="true" />}
                     {right?.picks[p.id] && <span className="thumbs__done" aria-hidden="true" />}
@@ -722,6 +826,7 @@ export default function Studio({ id }) {
                 </li>
               ))}
           </ul>
+          <p id="order-help" className="sr-only">{t('order.keys')}</p>
         </aside>
       </div>
 
@@ -747,7 +852,7 @@ export default function Studio({ id }) {
                         {property.featured === d.id && <span className="dchip__star" title={t('design.featured')}>★</span>}
                       </span>
                       <span className="dchip__name">{designName(d, t)}</span>
-                      <span className="dchip__meta">{isRunning ? t('design.running') : d.scope && have <= d.scope.length && have < visible.length ? t(have === 1 ? 'design.scoped1' : 'design.scoped', { n: have }) : have < visible.length ? t('design.partial', { have, total: visible.length }) : t(have === 1 ? 'design.scoped1' : 'design.photos', { n: have })}</span>
+                      <span className="dchip__meta">{isRunning ? t('design.running') : d.scope && have <= d.scope.length && have < editable.length ? t(have === 1 ? 'design.scoped1' : 'design.scoped', { n: have }) : have < editable.length ? t('design.partial', { have, total: editable.length }) : t(have === 1 ? 'design.scoped1' : 'design.photos', { n: have })}</span>
                     </span>
                   </button>
                 </li>
@@ -835,11 +940,11 @@ export default function Studio({ id }) {
             </label>
           )}
           <div className="newdesign__go">
-            <button type="button" className="btn btn--glow btn--big" onClick={restyleHouse} disabled={!canRender || starting || !visible.length || run?.status === 'running'}>
-              {starting ? t('design.starting') : mode === 'polish' ? t('studio.renderPolish', { n: visible.length }) : mode === 'cleanup' ? t('studio.renderPro', { n: visible.length }) : t('studio.render', { n: visible.length })}
+            <button type="button" className="btn btn--glow btn--big" onClick={restyleHouse} disabled={!canRender || starting || !editable.length || run?.status === 'running'}>
+              {starting ? t('design.starting') : mode === 'polish' ? t('studio.renderPolish', { n: editable.length }) : mode === 'cleanup' ? t('studio.renderPro', { n: editable.length }) : t('studio.render', { n: editable.length })}
             </button>
-            <p className="fine">{t('studio.renderNote', { min: Math.max(1, Math.round((Math.ceil(visible.length / 3) * 30) / 60)) })}</p>
-            <RunCost need={visible.length} />
+            <p className="fine">{t('studio.renderNote', { min: Math.max(1, Math.round((Math.ceil(editable.length / 3) * 30) / 60)) })}</p>
+            <RunCost need={editable.length} />
           </div>
         </div>
       </section>

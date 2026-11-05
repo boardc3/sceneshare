@@ -2,13 +2,15 @@ import { addDesign, BASE_MODES, normalizeProperty, publicView, removeDesign, rem
 import { sessionUser } from './_lib/auth.js'
 import { assertCanAddDesign } from './_lib/billing.js'
 import { config, TERMS_VERSION } from './_lib/config.js'
-import { deleteDesignRows, deleteProperty, listProperties, logSubmission, mutateProperty, ownerAccepted, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
+import { deleteDesignRows, deleteProperty, insertPhotoRows, listProperties, logSubmission, mutateProperty, ownerAccepted, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
 import { ApiError, query, readJson, route, send } from './_lib/http.js'
 import { background, visitorId } from './_lib/log.js'
 import { LIGHT_KEYS, STYLE_KEYS } from './_lib/prompts.js'
 import { nearby, POI_VERSION } from './_lib/mapbox.js'
-import { removeImages } from './_lib/storage.js'
+import { removeImages, storeImage } from './_lib/storage.js'
+import { aerial, isLocked, streetView } from './_lib/exterior.js'
+import { normalize } from './_lib/images.js'
 
 // GET  ?id=…        a home: the full studio copy for its owner, the buyer view for everyone else
 // GET  ?mine=1      the signed-in account's homes ("My homes")
@@ -62,7 +64,7 @@ async function read(req, res) {
   send(res, 200, { ok: true, owner, termsAccepted: accepted, property: owner && q.full === '1' ? p : publicView(p) })
 }
 
-const OPS = ['design.create', 'design.finish', 'design.review', 'design.base', 'photo.base', 'photos.dropListing', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'photo.delete', 'property.rename', 'property.delete']
+const OPS = ['photos.order', 'exterior.fetch', 'design.create', 'design.finish', 'design.review', 'design.base', 'photo.base', 'photos.dropListing', 'design.delete', 'design.feature', 'version.pick', 'photo.hide', 'photo.delete', 'property.rename', 'property.delete']
 
 async function write(req, res) {
   const body = await readJson(req)
@@ -75,10 +77,37 @@ async function write(req, res) {
   // Single-photo edits don't use up a Free plan's whole-house designs (they still count toward fair use).
   if (op === 'design.create') await assertCanAddDesign(user, id)
 
+  // The exterior: fetched once per home (Street View, else an aerial of the lot),
+  // stored like listing photos, before the home is updated below.
+  let exterior = null
+  if (op === 'exterior.fetch') {
+    const cur = normalizeProperty(row.data)
+    if (cur.exteriorChecked || !cur.address?.lat) return send(res, 200, { ok: true, property: { ...cur, updatedAt: new Date().toISOString() }, exterior: { skipped: true } })
+    const [sv, air] = await Promise.all([streetView(cur.address), aerial(cur.address)])
+    const keep = async (shot, source, kind, credit, caption) => {
+      if (!shot.ok) return null
+      try {
+        const n = await normalize(shot.buffer, 1600)
+        const src = await storeImage(n.buffer, { propertyId: id, kind })
+        return src ? { id: newId(6), src, width: n.width, height: n.height, source, credit, caption, versions: [] } : null
+      } catch {
+        return null
+      }
+    }
+    exterior = {
+      street: await keep(sv, 'streetview', 'streetview', `Street View ${sv.copyright || '© Google'}${sv.date ? ` · ${sv.date}` : ''}`, 'Street view'),
+      aerial: await keep(air, 'aerial', 'aerial', '© Mapbox © OpenStreetMap © Maxar', 'Aerial view'),
+      reasons: { street: sv.ok ? null : sv.reason, aerial: air.ok ? null : air.reason },
+    }
+    res._meta = { propertyId: id, op, street: Boolean(exterior.street), aerial: Boolean(exterior.aerial), reasons: exterior.reasons }
+    const added = [exterior.street, exterior.aerial].filter(Boolean)
+    if (added.length) await insertPhotoRows(id, added, user)
+  }
+
   if (op === 'property.delete') {
     const doomed = normalizeProperty(row.data)
     await deleteProperty(id)
-    background(removeImages(doomed.photos.flatMap((ph) => [ph.source === 'owner' ? ph.src : null, ...ph.versions.map((v) => v.src)])).catch(() => {}))
+    background(removeImages(doomed.photos.flatMap((ph) => [ph.src, ...ph.versions.map((v) => v.src)])).catch(() => {}))
     await logSubmission({ user, kind: 'property_delete', propertyId: id, lang })
     return send(res, 200, { ok: true, deleted: id })
   }
@@ -90,7 +119,7 @@ async function write(req, res) {
       case 'design.create': {
         const mode = ['polish', 'cleanup'].includes(body.mode) ? body.mode : 'redesign'
         // A design can cover chosen photos only (e.g. "clean up the photo I just uploaded").
-        const scope = Array.isArray(body.photoIds) ? [...new Set(body.photoIds.map(String))].filter((x) => p.photos.some((ph) => ph.id === x)).slice(0, 60) : null
+        const scope = Array.isArray(body.photoIds) ? [...new Set(body.photoIds.map(String))].filter((x) => p.photos.some((ph) => ph.id === x && !isLocked(ph))).slice(0, 60) : null
         if (Array.isArray(body.photoIds) && !scope.length) throw new ApiError(404, 'photo_missing', 'That photo is no longer part of this home.')
         design = {
           id: newId(8),
@@ -100,7 +129,8 @@ async function write(req, res) {
           note: String(body.note || '').trim().slice(0, 400),
           createdAt: new Date().toISOString(),
           status: 'running',
-          total: scope ? scope.length : p.photos.filter((ph) => !ph.hidden).length,
+          // Street View / aerial imagery is shown as captured, never edited.
+          total: scope ? scope.length : p.photos.filter((ph) => !ph.hidden && !isLocked(ph)).length,
           ...(scope ? { scope } : {}),
           picks: {},
           failed: [],
@@ -152,6 +182,21 @@ async function write(req, res) {
         for (const ph of p.photos.filter((x) => ['zillow', 'redfin', 'homes'].includes(x.source))) out = removePhoto(out, ph.id)
         return out
       }
+      // The owner's order for the photos (studio and share page alike).
+      case 'photos.order': {
+        const ids = Array.isArray(body.ids) ? body.ids.map(String) : []
+        const byId = new Map(p.photos.map((ph) => [ph.id, ph]))
+        if (ids.length !== p.photos.length || new Set(ids).size !== ids.length || !ids.every((x) => byId.has(x))) throw new ApiError(400, 'bad_order', 'The photo list changed — reload and try again.')
+        return { ...p, photos: ids.map((x) => byId.get(x)), ordered: true }
+      }
+      case 'exterior.fetch': {
+        if (p.exteriorChecked) return false
+        const have = new Set(p.photos.map((ph) => ph.source))
+        const street = exterior?.street && !have.has('streetview') ? [exterior.street] : []
+        const air = exterior?.aerial && !have.has('aerial') ? [exterior.aerial] : []
+        // Street view leads (the first thing a buyer sees is the house); the aerial closes.
+        return { ...p, photos: [...street, ...p.photos, ...air], exteriorChecked: true, exterior: exterior ? { street: Boolean(exterior.street), aerial: Boolean(exterior.aerial), reasons: exterior.reasons, at: new Date().toISOString() } : p.exterior }
+      }
       case 'design.delete':
         if (!d) return false
         return removeDesign(p, d.id)
@@ -190,7 +235,7 @@ async function write(req, res) {
   }
   if (op === 'photo.delete' && body.photoId) {
     const ph = normalizeProperty(row.data).photos.find((x) => x.id === body.photoId)
-    if (ph) background(removeImages([ph.source === 'owner' ? ph.src : null, ...ph.versions.map((v) => v.src)]).catch(() => {}))
+    if (ph) background(removeImages([ph.src, ...ph.versions.map((v) => v.src)]).catch(() => {}))
   }
   if (op === 'photo.hide') background(setPhotoHidden(id, body.photoId, !!body.hidden))
   if (design) background(upsertDesign(design, { propertyId: id, user }))

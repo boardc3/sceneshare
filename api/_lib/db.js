@@ -1209,7 +1209,7 @@ export async function deleteUserData(user) {
   if (!s) return { properties: 0 }
   const props = await s`select id, data from properties where owner_user_id = ${user.id}`
   // Files in Blob storage are removed by the caller (storage.js) from these URLs.
-  const files = props.flatMap((p) => (p.data?.photos || []).flatMap((ph) => [ph.source === 'owner' ? ph.src : null, ...(ph.versions || []).map((v) => v.src)])).filter((u) => /^https:/.test(u || ''))
+  const files = props.flatMap((p) => (p.data?.photos || []).flatMap((ph) => [ph.src, ...(ph.versions || []).map((v) => v.src)])).filter((u) => /^https:/.test(u || ''))
   for (const p of props) await deleteProperty(p.id)
   await s`delete from designs where user_id = ${user.id}`
   await s`delete from renders where user_id = ${user.id}`

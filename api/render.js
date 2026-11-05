@@ -9,6 +9,7 @@ import { fitTo, nearestRatio, normalize, outputSize } from './_lib/images.js'
 import { buildFeedbackPrompt, buildRenderPrompt, PRO_RETRY_PREFIX, RETRY_PREFIX } from './_lib/prompts.js'
 import { background } from './_lib/log.js'
 import { loadImageInput } from './_lib/source.js'
+import { isLocked } from './_lib/exterior.js'
 import { storeImage } from './_lib/storage.js'
 
 export const maxDuration = 300
@@ -35,6 +36,8 @@ export default route(
     if (!photo) throw new ApiError(404, 'photo_missing', 'That photo is no longer part of this home.')
     const design = p.designs.find((d) => d.id === body.designId)
     if (!design) throw new ApiError(404, 'design_missing', 'That design was removed.')
+    // Google Street View / Mapbox imagery may not be edited (their terms).
+    if (isLocked(photo)) throw new ApiError(400, 'photo_locked', 'Street View and aerial images are shown as captured and can’t be restyled. Add your own exterior photo to restyle the outside.')
     const feedback = String(body.feedback || '').trim().slice(0, 800)
     res._meta = { propertyId: p.id, designId: design.id, photoId: photo.id, kind: feedback ? 'feedback' : design.mode }
 

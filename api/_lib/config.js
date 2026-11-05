@@ -57,6 +57,12 @@ export const config = {
   imageSize: env.GEMINI_IMAGE_SIZE || '2K',
   // Mapbox public token (pk.…) — used server-side for geocoding and nearby places,
   // and handed to the browser for the maps. Restrict it to your domains in Mapbox.
+  // Street View (Static API enabled on this key). Falls back to the Gemini key's project.
+  googleMapsKey: env.GOOGLE_MAPS_API_KEY || env.GOOGLE_API_KEY || '',
+  // Street View frames go through "Make it professional" like other photos (Chris,
+  // 2026-11-05, after being told Google's terms restrict editing its imagery).
+  // STREET_VIEW_EDIT=0 turns it off.
+  streetViewEdit: env.STREET_VIEW_EDIT !== '0',
   mapboxToken: env.MAPBOX_TOKEN || env.MAPBOX_ACCESS_TOKEN || env.VITE_MAPBOX_TOKEN || '',
   mapboxPermanent: /^(1|true|yes)$/i.test(env.MAPBOX_PERMANENT_GEOCODING || ''),
   scraperKey: env.SCRAPERAPI_KEY || '',
@@ -85,6 +91,7 @@ export const TERMS_VERSION = '2026-11-04'
 export const features = () => ({
   render: Boolean(config.geminiKey),
   maps: Boolean(config.mapboxToken),
+  streetViewEdit: config.streetViewEdit,
   scraper: Boolean(config.scraperKey),
   storage: Boolean(config.blobToken || config.databaseUrl),
   blob: Boolean(config.blobToken),

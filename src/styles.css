@@ -5457,3 +5457,58 @@ body.is-modal {
   width: 100%;
   margin: 4px 0 10px;
 }
+
+/* ---------- drag to reorder (lib/sortable.js) ---------- */
+.rail__hint {
+  margin: 4px 0 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.thumbs li {
+  position: relative;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.thumbs li img {
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.thumbs.is-sorting li {
+  transition: transform 0.15s;
+}
+.thumbs li.is-dragging {
+  z-index: 2;
+  transform: scale(1.06);
+  box-shadow: 0 10px 28px rgba(5, 10, 14, 0.35);
+  border-radius: 10px;
+  opacity: 0.92;
+}
+.thumbs.is-sorting,
+.thumbs.is-sorting * {
+  cursor: grabbing !important;
+}
+.thumbs__n {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: rgba(22, 33, 43, 0.72);
+  color: #fff;
+  font-size: 0.68rem;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.phototools__move {
+  display: inline-flex;
+  gap: 4px;
+}
+.phototools__move .btn {
+  min-width: 36px;
+  padding-inline: 8px;
+}
