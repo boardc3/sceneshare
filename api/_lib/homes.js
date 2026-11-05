@@ -1,4 +1,4 @@
-import { scraperLadder, webSearch } from './scraper.js'
+import { LADDER, scraperLadder, webSearch } from './scraper.js'
 
 // Homes.com (CoStar). Its pages and image CDN sit behind Akamai, so both go through
 // ScraperAPI. The property page is found through ScraperAPI's Google endpoint and
@@ -113,7 +113,10 @@ export function homesFacts(html) {
 
 export async function fetchHomes(url, { deadline } = {}) {
   const pageSlug = PAGE.exec(new URL(url).pathname)?.[1] || null
-  const page = await scraperLadder(url, (h) => /images\.homes\.com\/listings/i.test(h) && h.length > 20000, { deadline })
+  // Homes.com's Akamai wall is intermittent (production: plain 500 → premium 200 on one
+  // try, 500 on every step the next), so premium gets a second chance.
+  const steps = [...LADDER.slice(0, 2), { label: 'premium-again', premium: true }, ...LADDER.slice(2)]
+  const page = await scraperLadder(url, (h) => /images\.homes\.com\/listings/i.test(h) && h.length > 20000, { deadline, steps })
   if (!page.text) return { url, ok: false, tried: page.tried, photos: [], facts: null }
   return { url, ok: true, step: page.step, tried: page.tried, photos: homesPhotos(page.text, pageSlug), facts: homesFacts(page.text) }
 }
