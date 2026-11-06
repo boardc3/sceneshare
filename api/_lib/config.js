@@ -49,6 +49,10 @@ export const config = {
   // Accounts allowed to use preview-mode purchases besides admins (comma-separated).
   previewTesters: list(env.PREVIEW_TESTER_EMAILS),
   production: env.VERCEL_ENV === 'production',
+  // Share pages open for everyone (Chris, 2026-11-05: "remove all requirements for
+  // viewing for now"): no hidden-until-terms page, no offline-after-plan page.
+  // VIEW_GATES=1 brings both back.
+  viewGates: env.VIEW_GATES === '1',
   siteUrl: String(env.SITE_URL || 'https://www.sceneshare.app').replace(/\/+$/, ''),
   geminiKey: env.GOOGLE_API_KEY || env.GEMINI_API_KEY || '',
   // "Nano Banana 2" = Gemini 3.1 Flash Image. Override without a redeploy of code.
