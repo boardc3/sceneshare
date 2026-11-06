@@ -1,4 +1,4 @@
-import { adminAnalytics, adminOverview, listErrors, reviewErrors, superUserDetail, superUsers } from '../_lib/db.js'
+import { adminAnalytics, adminOverview, aiInputs, listErrors, reviewErrors, superUserDetail, superUsers } from '../_lib/db.js'
 import { requireAdmin, requireSuperAdmin } from '../_lib/gate.js'
 import { query, readJson, route, send } from '../_lib/http.js'
 
@@ -7,6 +7,7 @@ import { query, readJson, route, send } from '../_lib/http.js'
 //   GET                                       overview
 //   GET  ?errors=1&days=7&source=&level=&open=1   the error log
 //   GET  ?analytics=1&days=30                      the analytics dashboard
+//   GET  ?inputs=1&days=30&q=&kind=round|change     every AI input (rounds, change requests)
 //   GET  ?users=1&days=30 · ?user=<id>             super admin: users, growth, one user's activity
 //   POST { op: 'errors.review', ids: [..] | all: true, reviewed: true|false }
 export default route(
@@ -31,6 +32,7 @@ export default route(
       if (!detail) return send(res, 404, { ok: false, error: 'not_found', message: 'No such user.' })
       return send(res, 200, { ok: true, ...detail })
     }
+    if (q.inputs === '1') return send(res, 200, { ok: true, ...(await aiInputs({ days: Number(q.days) || 30, q: q.q || '', kind: ['round', 'change'].includes(q.kind) ? q.kind : '' })) })
     if (q.analytics === '1') return send(res, 200, { ok: true, analytics: await adminAnalytics(Number(q.days) || 30), at: new Date().toISOString() })
     if (q.errors === '1') {
       const out = await listErrors({

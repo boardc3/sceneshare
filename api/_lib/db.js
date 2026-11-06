@@ -1089,6 +1089,40 @@ export async function ownerAnalytics(userId, days = 30) {
   }
 }
 
+// ---------------------------------------------------------------- AI inputs (/admin → AI inputs)
+// Everything people asked the image model for: each round's settings and typed
+// instructions, and each change request on a single image.
+export async function aiInputs({ days = 30, q = '', kind = '', limit = 300 } = {}) {
+  const s = await ensure()
+  if (!s) return { rows: [], totals: {} }
+  const since = new Date(Date.now() - Math.min(365, Math.max(1, days)) * 864e5).toISOString()
+  const like = q ? `%${String(q).slice(0, 80).toLowerCase()}%` : '%'
+  const rows = await s`select * from (
+      select 'round' as kind, d.id, d.created_at as at, d.mode, d.style, d.light, coalesce(d.note, '') as text,
+        d.property_id, d.user_id, u.email, coalesce(p.data->>'nickname', p.formatted_address, 'Untitled home') as home,
+        (select count(*) from renders r where r.design_id = d.id and r.feedback is null)::int as images,
+        (select count(*) from renders r where r.design_id = d.id and r.feedback is not null)::int as changes
+      from designs d left join users u on u.id = d.user_id left join properties p on p.id = d.property_id
+      where d.created_at > ${since}
+      union all
+      select 'change' as kind, r.id, r.created_at as at, r.mode, r.style, r.light, r.feedback as text,
+        r.property_id, r.user_id, coalesce(u.email, r.email), coalesce(p.data->>'nickname', p.formatted_address, 'Untitled home') as home,
+        1 as images, 0 as changes
+      from renders r left join users u on u.id = r.user_id left join properties p on p.id = r.property_id
+      where r.feedback is not null and r.created_at > ${since}
+    ) x
+    where (${kind || ''} = '' or x.kind = ${kind || ''})
+      and (lower(x.text) like ${like} or lower(coalesce(x.email, '')) like ${like} or lower(coalesce(x.home, '')) like ${like} or lower(coalesce(x.style, '')) like ${like})
+    order by at desc limit ${Math.min(1000, limit)}`
+  const [t] = await s`select
+      (select count(*) from designs where created_at > ${since})::int as rounds,
+      (select count(*) from designs where created_at > ${since} and coalesce(note, '') <> '')::int as with_text,
+      (select count(*) from renders where feedback is not null and created_at > ${since})::int as changes`
+  const styles = await s`select coalesce(style, mode) as style, count(*)::int as n from designs where created_at > ${since} group by 1 order by 2 desc limit 12`
+  const lights = await s`select coalesce(light, '—') as light, count(*)::int as n from designs where created_at > ${since} group by 1 order by 2 desc`
+  return { rows, totals: t || {}, styles, lights }
+}
+
 // ---------------------------------------------------------------- error log
 const clip = (v, n) => (v == null ? null : String(v).slice(0, n))
 export async function insertErrors(rows) {

@@ -4,6 +4,7 @@ import { requireSignIn, useAuth } from '../lib/auth.js'
 import { Link } from '../router.jsx'
 import AdminAnalytics from '../components/AdminAnalytics.jsx'
 import AdminUsers from '../components/AdminUsers.jsx'
+import AdminInputs from '../components/AdminInputs.jsx'
 
 // Internal: what is happening on Sceneshare. Verified admin accounts only
 // (ADMIN_EMAILS in Vercel; defaults to chris@ccolbert.com). Super admins
@@ -43,7 +44,7 @@ export default function Admin() {
   const { user, ready, admin, superAdmin } = useAuth()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState(() => ({ '#analytics': 'analytics', '#errors': 'errors', '#users': 'users' })[location.hash] || 'overview')
+  const [tab, setTab] = useState(() => ({ '#analytics': 'analytics', '#errors': 'errors', '#users': 'users', '#inputs': 'inputs' })[location.hash] || 'overview')
   const go = (t) => {
     setTab(t)
     history.replaceState(null, '', t === 'overview' ? location.pathname : `#${t}`)
@@ -92,6 +93,7 @@ export default function Admin() {
         {[
           ['overview', 'Overview'],
           ['analytics', 'Analytics'],
+          ['inputs', 'AI inputs'],
           ...(superAdmin ? [['users', 'Users']] : []),
           ['errors', 'Error log'],
         ].map(([k, label]) => (
@@ -102,6 +104,7 @@ export default function Admin() {
       </nav>
       {tab === 'analytics' && <AdminAnalytics />}
       {tab === 'errors' && <ErrorLog />}
+      {tab === 'inputs' && <AdminInputs />}
       {tab === 'users' && superAdmin && <AdminUsers />}
       {tab === 'overview' && (
         <>
