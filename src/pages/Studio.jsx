@@ -987,7 +987,7 @@ export default function Studio({ id }) {
           onClose={() => setReviewing(null)}
         />
       )}
-      {prPhotos && <PhotoRestyle photos={prPhotos} styles={STYLES} lights={LIGHTS} busy={prBusy} onStart={restylePhotos} onClose={() => (setPrPhotos(null), track('photo_restyle_dismiss', null, { propertyId: id }))} />}
+      {prPhotos && <PhotoRestyle photos={prPhotos} busy={prBusy} onStart={restylePhotos} onClose={() => (setPrPhotos(null), track('photo_restyle_dismiss', null, { propertyId: id }))} />}
     </main>
   )
 }

@@ -83,12 +83,14 @@ async function renderOne({ res, body, user, p, photo, design, base, feedback, ch
     const pro = !base && design.mode === 'cleanup'
     if (score < (pro ? ALIGN_MIN_PRO : ALIGN_MIN) && Date.now() - started < 120000) {
       try {
-        const again = await generateImage({ prompt: (pro ? PRO_RETRY_PREFIX : RETRY_PREFIX) + prompt, images, aspectRatio, deadline: started + 250000 })
+        const retryPrompt = (pro ? PRO_RETRY_PREFIX : RETRY_PREFIX) + prompt
+        const again = await generateImage({ prompt: retryPrompt, images, aspectRatio, deadline: started + 250000 })
         const s2 = await alignmentScore(source.buffer, source.width, source.height, again.buffer).catch(() => 0)
         attempts = 2
         if (s2 > score) {
           out = again
           score = s2
+          prompt = retryPrompt
         }
       } catch {
         /* keep the first take */
@@ -129,7 +131,7 @@ async function renderOne({ res, body, user, p, photo, design, base, feedback, ch
     })
     const saved = next?.designs.find((d) => d.id === design.id)
     if (!saved) throw new ApiError(409, 'design_missing', 'That design was removed while this photo was rendering.')
-    await saveRender(version, { propertyId: p.id, photoId: photo.id, user, note: design.note || null, lang: body.lang })
+    await saveRender(version, { propertyId: p.id, photoId: photo.id, user, note: design.note || null, lang: body.lang, prompt })
     background(upsertDesign(saved, { propertyId: p.id, user }))
     background(
       logSubmission({

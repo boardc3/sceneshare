@@ -1,17 +1,11 @@
-import { useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { Modal } from './Chrome.jsx'
 
-const MODES = ['cleanup', 'redesign', 'polish'] // professional photo first: the reason most people upload
-
-// Pop-up offered after an upload (and from any photo): clean up, restyle or relight
-// just these photos, without touching the rest of the house.
-export default function PhotoRestyle({ photos, styles, lights, onStart, onClose, busy = false }) {
+// Pop-up offered after an upload (and from any photo): one click turns just these
+// photos into professional listing photos. Restyle and relight stay in the studio
+// panel for people who want them (Chris, 2026-11-09: keep the first step simple).
+export default function PhotoRestyle({ photos, onStart, onClose, busy = false }) {
   const { t } = useI18n()
-  const [mode, setMode] = useState('cleanup')
-  const [style, setStyle] = useState('signature')
-  const [light, setLight] = useState('daylight')
-  const [note, setNote] = useState('')
   const n = photos.length
   if (!n) return null
   return (
@@ -24,43 +18,10 @@ export default function PhotoRestyle({ photos, styles, lights, onStart, onClose,
         ))}
         {n > 6 && <span className="pr__more">+{n - 6}</span>}
       </div>
-      <div className="seg seg--wide" role="group" aria-label={t('studio.mode.label')}>
-        {MODES.map((m) => (
-          <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}>
-            {t(`pr.mode.${m}`)}
-          </button>
-        ))}
-      </div>
-      <p className="fine">{t(`pr.about.${mode}`)}</p>
-      {mode === 'redesign' && (
-        <label className="field">
-          <span>{t('studio.style')}</span>
-          <select value={style} onChange={(e) => setStyle(e.target.value)}>
-            {styles.map((s) => (
-              <option key={s} value={s}>
-                {t(`style.${s}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <label className="field">
-        <span>{t('studio.light')}</span>
-        <select value={light} onChange={(e) => setLight(e.target.value)}>
-          {lights.map((l) => (
-            <option key={l} value={l}>
-              {t(`light.${l}`)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>{t('pr.note')}</span>
-        <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t(mode === 'redesign' ? 'design.notePh' : 'pr.notePh')} maxLength={300} />
-      </label>
+      <p className="fine">{t('pr.about.cleanup')}</p>
       <div className="dialog__actions">
-        <button type="button" className="btn btn--glow" disabled={busy} onClick={() => onStart({ mode, style: mode === 'redesign' ? style : null, light, note: note.trim() })}>
-          {busy ? t('design.starting') : t(`pr.go.${mode}`, { n })}
+        <button type="button" className="btn btn--glow" disabled={busy} onClick={() => onStart({ mode: 'cleanup', style: null, light: 'daylight', note: '' })}>
+          {busy ? t('design.starting') : t('pr.go.cleanup', { n })}
         </button>
         <button type="button" className="btn btn--quiet" onClick={onClose}>
           {t('pr.later')}

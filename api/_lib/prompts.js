@@ -99,7 +99,8 @@ const PRO_FIX = `FIX — WHAT THE PROFESSIONAL DOES
 1. CAMERA AND COMPOSITION
 - Level the horizon and correct the tilt. Make every vertical line truly vertical (two-point perspective, as with a tilt-shift lens): door frames, wall corners, window frames and cabinets straight up and down, no converging or leaning verticals.
 - Remove phone-lens distortion (bowed lines at the edges). Camera at a natural chest height (about 1.2–1.5 m) looking level.
-- Only the small reframe these corrections need is allowed; keep the same subject, the same spot and the same aspect ratio. Never zoom out to invent unseen space.
+- Re-centre the composition so the room reads as symmetrical as the real space allows: centre on the main wall, window, bed, fireplace or feature the photo is already facing, with even margins left and right. Do this by squaring up the camera, never by resizing, stretching or moving anything in the room: the room's dimensions and proportions stay accurate.
+- Only the reframe these corrections need is allowed; keep the same subject, the same spot and the same aspect ratio. Never zoom out to invent unseen space.
 2. LIGHT AND EXPOSURE (flambient / HDR blend, done well)
 - Bright, airy, evenly lit room with natural depth: no dark corners, no blown highlights, no flash hotspots, no harsh flash shadows.
 - Window pull: windows correctly exposed so the real view outside is clearly visible, never a white blown-out glow, never a fake view.
@@ -108,7 +109,8 @@ const PRO_FIX = `FIX — WHAT THE PROFESSIONAL DOES
 - Tack sharp throughout, as from a full-frame camera on a tripod at f/8, ISO 100: remove motion blur, softness, noise and grain; fine real texture in wood, stone, fabric and metal.
 - Remove lens flare, glare, smudges and dust; remove reflections of the photographer or phone in mirrors, glass and appliances.
 4. PRE-SHOOT TIDY (what the photographer would ask the agent to do)
-- Remove clutter: items on counters, tables, floors and shelves; personal photos, papers, fridge magnets, toiletries, cleaning products, cords and cables, trash and bins, toys, shoes, laundry, pet bowls and beds, cars in the driveway.
+- Remove clutter: items on counters, tables, floors and shelves; personal photos, papers, fridge magnets, toiletries, cleaning products, cords and cables, trash and bins, shoes, laundry, pet bowls and beds, cars in the driveway.
+- Remove every sign of children: toys, play mats, high chairs, cribs' loose bedding and mobiles, strollers, car seats, children's drawings, school papers, stickers, growth charts, child locks and gates, bath toys, outdoor play equipment that is not built in.
 - Tidy what stays: beds made with crisp linens, pillows plumped, cushions and throws straightened, rugs straight, chairs aligned, blinds and curtains evenly open, cabinet doors and drawers closed, toilet lid down, towels folded, TV and screens off and black, ceiling fans still.
 - Fill every cleared area with the real surface behind it.
 - Deep clean, as after a professional cleaning crew: carpets freshly cleaned and evenly vacuumed with no stains, spots or traffic marks; hard floors, counters, glass and mirrors spotless; scuffs, marks and patches on walls and ceilings removed. Same materials and the same colours, just clean.

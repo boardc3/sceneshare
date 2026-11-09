@@ -159,7 +159,8 @@ async function migrate(s) {
     lang text,
     created_at timestamptz not null default now()
   )`
-  for (const col of ['design_id text', 'user_id text', 'base_version_id text']) await s.query(`alter table renders add column if not exists ${col}`)
+  // prompt: the exact text sent to the image model for this take (internal; never shown to users or exported).
+  for (const col of ['design_id text', 'user_id text', 'base_version_id text', 'prompt text']) await s.query(`alter table renders add column if not exists ${col}`)
   await s`create index if not exists renders_property_idx on renders (property_id, created_at)`
   await s`create index if not exists renders_design_idx on renders (design_id)`
 
@@ -811,12 +812,12 @@ export function upsertDesign(d, { propertyId, user }) {
       failed = excluded.failed, updated_at = now()`)
 }
 
-export function saveRender(v, { propertyId, photoId, user, note = null, lang = null }) {
+export function saveRender(v, { propertyId, photoId, user, note = null, lang = null, prompt = null }) {
   return safe('saveRender', async (s) => {
-    await s`insert into renders (id, property_id, photo_id, email, user_id, design_id, base_version_id, mode, style, light, feedback, note, model, align, attempts, ms, src, width, height, lang)
+    await s`insert into renders (id, property_id, photo_id, email, user_id, design_id, base_version_id, mode, style, light, feedback, note, model, align, attempts, ms, src, width, height, lang, prompt)
       values (${v.id}, ${propertyId}, ${photoId || null}, ${user?.email || null}, ${user?.id || null}, ${v.designId || null}, ${v.baseVersionId || null},
         ${v.mode}, ${v.style || null}, ${v.light || null}, ${v.feedback || null}, ${note}, ${v.model || null}, ${v.align ?? null},
-        ${v.attempts ?? null}, ${v.ms ?? null}, ${v.src}, ${v.width ?? null}, ${v.height ?? null}, ${lang})
+        ${v.attempts ?? null}, ${v.ms ?? null}, ${v.src}, ${v.width ?? null}, ${v.height ?? null}, ${lang}, ${prompt})
       on conflict (id) do nothing`
     if (photoId) await s`update photos set chosen_render_id = ${v.id} where property_id = ${propertyId} and id = ${photoId}`
     return true
