@@ -11,7 +11,7 @@ export default function PhotoRestyle({ photos, onStart, onClose, busy = false })
   return (
     <Modal labelledBy="pr-h" onClose={onClose} wide>
       <p className="page__eyebrow">{t(n === 1 ? 'pr.eyebrow1' : 'pr.eyebrow', { n })}</p>
-      <h2 id="pr-h">{t(n === 1 ? 'pr.title1' : 'pr.title', { n })}</h2>
+      <h2 id="pr-h">{t(n === 1 ? 'pr.title1' : 'pr.titleN', { n })}</h2>
       <div className="pr__thumbs">
         {photos.slice(0, 6).map((p) => (
           <img key={p.id} src={p.src} alt="" width={p.width} height={p.height} />
