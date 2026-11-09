@@ -54,6 +54,7 @@ export function match(path) {
   if (p === '/analytics') return { page: 'insights' }
   if (p === '/settings') return { page: 'settings' }
   if (p === '/plan') return { page: 'plan' }
+  if (p === '/beta') return { page: 'beta' }
   if (p === '/reset') return { page: 'reset' }
   if (p === '/terms') return { page: 'legal', doc: 'terms' }
   if (p === '/privacy') return { page: 'legal', doc: 'privacy' }

@@ -37,7 +37,7 @@ export async function refresh() {
   }
   try {
     const d = await get('/api/account')
-    set({ ready: true, user: d.user, admin: !!d.admin, superAdmin: !!d.superAdmin, accounts: d.accounts !== false, claimed: d.claimed || 0, prefs: d.prefs || {}, terms: d.terms || { accepted: false }, full: d.accountsFull ? d.message || true : false })
+    set({ ready: true, user: d.user, admin: !!d.admin, superAdmin: !!d.superAdmin, accounts: d.accounts !== false, claimed: d.claimed || 0, prefs: d.prefs || {}, terms: d.terms || { accepted: false }, full: d.accountsFull ? d.message || true : false, beta: d.beta || null })
     if (d.user) loadBilling()
     else clearBilling()
     if (verifier && d.user) track('sign_in', { method: 'google' })

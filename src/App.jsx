@@ -14,6 +14,7 @@ import { Link, Router, match, useRouter } from './router.jsx'
 // Pages most visitors never open load on demand.
 const Account = lazy(() => import('./pages/Account.jsx'))
 const Admin = lazy(() => import('./pages/Admin.jsx'))
+const Beta = lazy(() => import('./pages/Beta.jsx'))
 const Insights = lazy(() => import('./pages/Insights.jsx'))
 const Legal = lazy(() => import('./pages/Legal.jsx'))
 const Plan = lazy(() => import('./pages/Plan.jsx'))
@@ -140,6 +141,7 @@ function Pages() {
           {m.page === 'reset' && <Reset />}
           {m.page === 'settings' && <Settings />}
           {m.page === 'plan' && <Plan />}
+          {m.page === 'beta' && <Beta />}
           {m.page === 'legal' && <Legal key={m.doc} doc={m.doc} />}
           {m.page === 'privacyRequest' && <PrivacyRequest />}
           {m.page === 'notfound' && <NotFound />}

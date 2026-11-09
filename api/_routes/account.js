@@ -1,7 +1,7 @@
 import { authCall, authEnabled, sessionUser } from '../_lib/auth.js'
-import { cancelForDeletion } from '../_lib/billing.js'
-import { TERMS_VERSION } from '../_lib/config.js'
-import { acceptTerms, addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, ownerAnalytics, setPrefs, touchUser } from '../_lib/db.js'
+import { cancelForDeletion, earlyAccess } from '../_lib/billing.js'
+import { TERMS_VERSION, config } from '../_lib/config.js'
+import { accountsCount, acceptTerms, addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, ownerAnalytics, setPrefs, touchUser } from '../_lib/db.js'
 import { background, ipHash } from '../_lib/log.js'
 import { removeImages } from '../_lib/storage.js'
 import { FULL_MESSAGE, hasSeat, isAdmin, isSuperAdmin, newId, requireUser } from '../_lib/gate.js'
@@ -11,6 +11,14 @@ import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 // GET ?export=1    "Download my data": everything we hold about the account, as JSON
 // GET  ?analytics=1&days=30           analytics for the signed-in owner's own homes
 // POST {op:'delete', confirm:'DELETE'}   delete the account and everything it made
+// Early access in numbers, for /beta: spots left and what an account includes.
+async function betaSpots() {
+  if (!earlyAccess()) return null
+  const max = config.maxAccounts
+  const used = max ? await accountsCount().catch(() => 0) : 0
+  return { max, left: max ? Math.max(0, max - used) : null, homes: config.maxHomes, renders: config.maxRenders }
+}
+
 export default route(
   ['GET', 'POST'],
   async (req, res) => {
@@ -32,13 +40,14 @@ export default route(
         return res.end(JSON.stringify(data, null, 2))
       }
       const user = authEnabled() ? await sessionUser(req, res) : null
-      if (!user) return send(res, 200, { ok: true, accounts: authEnabled(), user: null })
+      const beta = await betaSpots()
+      if (!user) return send(res, 200, { ok: true, accounts: authEnabled(), user: null, beta })
       // No seat left in early access: signed in, but no account is opened.
-      if (!(await hasSeat(user))) return send(res, 200, { ok: true, accounts: true, user, admin: false, superAdmin: false, claimed: 0, prefs: {}, terms: { accepted: false, at: null, version: TERMS_VERSION }, accountsFull: true, message: FULL_MESSAGE })
+      if (!(await hasSeat(user))) return send(res, 200, { ok: true, accounts: true, user, admin: false, superAdmin: false, claimed: 0, prefs: {}, terms: { accepted: false, at: null, version: TERMS_VERSION }, accountsFull: true, message: FULL_MESSAGE, beta })
       const { claimed, prefs, termsAt, termsVersion } = await touchUser(user)
       res._meta = claimed ? { claimed } : null
       const terms = { accepted: Boolean(termsAt && termsVersion === TERMS_VERSION), at: termsAt, version: TERMS_VERSION }
-      return send(res, 200, { ok: true, accounts: true, user, admin: isAdmin(user), superAdmin: isSuperAdmin(user), claimed, prefs, terms })
+      return send(res, 200, { ok: true, accounts: true, user, admin: isAdmin(user), superAdmin: isSuperAdmin(user), claimed, prefs, terms, beta })
     }
 
     const body = await readJson(req)

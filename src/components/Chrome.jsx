@@ -335,9 +335,10 @@ export function AuthModal() {
     [],
   )
   useEffect(() => {
-    const open = () => {
-      setReq({ mode: 'signin', reason: null, resolve: () => {} })
-      setMode('signin')
+    const open = (e) => {
+      const m = e?.detail?.mode === 'signup' ? 'signup' : 'signin'
+      setReq({ mode: m, reason: null, resolve: () => {} })
+      setMode(m)
       setError('')
       setSent(false)
       track('auth_open', { reason: 'nav' })
