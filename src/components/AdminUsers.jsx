@@ -210,7 +210,7 @@ export default function AdminUsers() {
         <>
           <ul className="an-kpis">
             {[
-              ['Accounts', T.accounts],
+              ['Accounts', T.accounts, d.caps?.accounts ? `Of ${d.caps.accounts} early-access spots` : undefined],
               [`New, last ${d.days} days`, T.new_accounts],
               ['Active today', T.dau, 'Signed-in, last 24 h'],
               ['Active this week', T.wau, 'Last 7 days'],

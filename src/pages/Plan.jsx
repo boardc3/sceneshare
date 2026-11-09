@@ -102,8 +102,8 @@ export default function Plan() {
   }
   const share = periodShare(b)
   const managed = b.mode === 'test' || b.mode === 'live'
-  const planName = t(`plan.name.${b.plan}`)
-  const big = b.plan === 'trial' ? b.trial?.daysLeft : paid && b.source !== 'admin' ? b.daysLeft : null
+  const planName = t(`plan.name.${b.early ? 'early' : b.plan}`)
+  const big = b.early ? null : b.plan === 'trial' ? b.trial?.daysLeft : paid && b.source !== 'admin' ? b.daysLeft : null
 
   return (
     <main id="main" className="page plan">
@@ -113,7 +113,7 @@ export default function Plan() {
         <Link to="/account">{t('nav.homes')}</Link> · <Link to="/settings">{t('nav.settings')}</Link>
       </p>
 
-      {(b.mode === 'preview' || b.mode === 'test') && (
+      {(b.mode === 'preview' || b.mode === 'test') && !b.early && (
         <p className={`plan__mode plan__mode--${b.mode}`} role="note">
           <strong>{t(`plan.mode.${b.mode}.short`)}</strong> {t(`plan.mode.${b.mode}.body`)}
         </p>
@@ -148,7 +148,8 @@ export default function Plan() {
         </div>
 
         {b.source === 'admin' && <p className="fine">{t('plan.adminNote')}</p>}
-        {b.plan === 'trial' && <p className="fine">{t('plan.trialBody', { h: b.limits.homes, c: b.limits.credits })}</p>}
+        {b.early && <p className="fine">{t('early.body', { h: b.limits.homes, c: b.limits.credits })} <a href="mailto:Chris@sceneset.ai">Chris@sceneset.ai</a></p>}
+        {b.plan === 'trial' && !b.early && <p className="fine">{t('plan.trialBody', { h: b.limits.homes, c: b.limits.credits })}</p>}
         {share != null && (b.plan === 'trial' || (paid && b.source !== 'admin')) && (
           <>
             <div className="meter__bar meter__bar--time" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)} aria-label={t('plan.daysLeft')}>
@@ -164,8 +165,8 @@ export default function Plan() {
         )}
 
         <div className="plan__meters">
-          <Meter t={t} label={t('plan.m.homes')} used={b.usage.homes} limit={b.limits.homes} />
-          {b.credits && !b.credits.unlimited && <Meter t={t} label={t('plan.m.credits')} used={b.credits.used} limit={b.credits.allotment} />}
+          <Meter t={t} label={t(b.early ? 'early.homes' : 'plan.m.homes')} used={b.usage.homes} limit={b.limits.homes} />
+          {b.credits && !b.credits.unlimited && <Meter t={t} label={t(b.early ? 'early.renders' : 'plan.m.credits')} used={b.credits.used} limit={b.credits.allotment} />}
         </div>
 
         <div className="settings__row plan__actions">
@@ -187,13 +188,13 @@ export default function Plan() {
         </div>
       </section>
 
-      {b.source !== 'admin' && b.mode !== 'off' && prices && (
+      {b.source !== 'admin' && b.mode !== 'off' && !b.early && prices && (
         <Tiers b={b} prices={prices} plans={plans} busy={busy} run={run} managed={managed} />
       )}
 
       {b.plan === 'premium' && b.source !== 'admin' && extra && <Extras b={b} extra={extra} busy={busy} run={run} managed={managed} />}
 
-      {b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && (
+      {b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && !b.early && (
         <section className="settings__card credits" id="credits" aria-labelledby="p-credits">
           <div className="plan__head">
             <div>
@@ -202,10 +203,10 @@ export default function Plan() {
                 {b.credits.available} <span className="credits__of">{t('credits.available')}</span>
               </h2>
             </div>
-            <div className="plan__days">
+            {b.credits.resetsAt && <div className="plan__days">
               <strong>{b.credits.resetsInDays}</strong>
               <span>{t('credits.daysToReset', { date: new Date(b.credits.resetsAt).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', day: 'numeric', ...(paid || b.plan === 'trial' ? {} : { timeZone: 'UTC' }) }) })}</span>
-            </div>
+            </div>}
           </div>
           <p>{t('credits.sectionBody', { n: b.credits.allotment })}</p>
           {b.credits.packs > 0 && (

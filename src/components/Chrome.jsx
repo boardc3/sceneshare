@@ -11,7 +11,7 @@ import PasswordInput from './PasswordInput.jsx'
 
 export function Nav({ tone = 'light' }) {
   const { t, lang, setLang } = useI18n()
-  const { user, ready, admin } = useAuth()
+  const { user, ready, admin, full } = useAuth()
   const { navigate, path } = useRouter()
   const [menu, setMenu] = useState(false)
   // Keep the plan badge current as people move around (homes and designs change it).
@@ -32,6 +32,12 @@ export function Nav({ tone = 'light' }) {
   }, [menu])
   const initial = (user?.name || user?.email || '?').trim()[0]?.toUpperCase()
   return (
+    <>
+    {user && full && (
+      <p className="banner banner--error nav__full" role="status">
+        {t('early.full')} <a href="mailto:Chris@sceneset.ai">Chris@sceneset.ai</a>
+      </p>
+    )}
     <header className={`nav nav--${tone}`}>
       <Link to="/" className="wordmark" aria-label={t('brand')}>
         Sceneshare
@@ -95,6 +101,7 @@ export function Nav({ tone = 'light' }) {
         )}
       </nav>
     </header>
+    </>
   )
 }
 
@@ -209,9 +216,14 @@ export function UpgradePrompt() {
   return (
     <Modal labelledBy="upgrade-title" onClose={close}>
       <p className="page__eyebrow">{t('plan.limit.eyebrow')}</p>
-      <h2 id="upgrade-title">{t(`plan.limit.${info.limit}.title`, { n: info.max })}</h2>
-      <p>{t(`plan.limit.${info.limit}.body`, { n: info.max })}</p>
+      <h2 id="upgrade-title">{t(info.early ? `early.limit.${info.limit}.title` : `plan.limit.${info.limit}.title`, { n: info.max })}</h2>
+      <p>{t(info.early ? `early.limit.${info.limit}.body` : `plan.limit.${info.limit}.body`, { n: info.max })}</p>
       <div className="dialog__actions">
+        {info.early ? (
+          <a className="btn btn--glow" href="mailto:Chris@sceneset.ai?subject=Sceneshare%20early%20access">
+            {t('early.ask')}
+          </a>
+        ) : (
         <button
           type="button"
           className="btn btn--glow"
@@ -222,6 +234,7 @@ export function UpgradePrompt() {
         >
           {info.limit === 'credits' ? t('credits.buyMore') : info.limit === 'homes' && info.plan === 'premium' ? t('extra.cta') : t('plan.seePlans')}
         </button>
+        )}
         <button type="button" className="btn btn--quiet" onClick={close}>
           {t('plan.notNow')}
         </button>
@@ -282,6 +295,7 @@ const AUTH_ERRORS = {
   VALIDATION_ERROR: 'auth.err.email',
   TOO_MANY_REQUESTS: 'auth.err.rate',
   http_429: 'auth.err.rate',
+  ACCOUNTS_FULL: 'auth.err.full',
   network: 'err.network',
 }
 

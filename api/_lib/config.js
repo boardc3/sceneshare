@@ -45,6 +45,14 @@ export const config = {
   // from the database URL (a server-only secret), so no extra setup is needed.
   authSecret: env.AUTH_COOKIE_SECRET || '',
   adminEmails,
+  // Early access (Chris, 2026-11-09: "Max of 5 properties and 100 re-renders per
+  // account… limit this to 100 accounts for now"). While no money moves (billing
+  // in preview), every account gets this allowance once, for good, and sign-ups
+  // stop at maxAccounts. EARLY_ACCESS=0 restores the 7-day trial. 0 = no cap.
+  earlyAccess: env.EARLY_ACCESS !== '0',
+  maxHomes: Math.max(0, parseInt(env.ACCOUNT_MAX_HOMES ?? '5', 10) || 0),
+  maxRenders: Math.max(0, parseInt(env.ACCOUNT_MAX_RENDERS ?? '100', 10) || 0),
+  maxAccounts: Math.max(0, parseInt(env.MAX_ACCOUNTS ?? '100', 10) || 0),
   superAdminEmails,
   // Accounts allowed to use preview-mode purchases besides admins (comma-separated).
   previewTesters: list(env.PREVIEW_TESTER_EMAILS),

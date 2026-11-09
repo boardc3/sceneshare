@@ -99,6 +99,7 @@ export async function setCancel(cancel) {
 
 // How much of a period is used, for the progress bar.
 export function periodShare(b) {
+  if (b?.early) return null
   if (b?.plan === 'trial' && b.trial) return Math.max(0, Math.min(1, b.trial.daysLeft / (state.trialDays || 7)))
   if (!b?.periodEnd || b.daysLeft == null) return null
   const total = b.interval === 'year' ? 365 : 30

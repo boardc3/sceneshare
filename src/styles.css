@@ -5583,3 +5583,40 @@ body.is-modal {
   font-size: 0.76rem;
   color: var(--muted);
 }
+
+/* Homes used in the nav meter, and the early-access "full" notice. */
+.cmeter__homes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+}
+.cmeter__homes svg {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+  opacity: 0.75;
+}
+.nav__full {
+  margin: 0;
+  border-radius: 0;
+  text-align: center;
+}
+@media (max-width: 640px) {
+  .cmeter__homes {
+    padding-left: 6px;
+    gap: 3px;
+    font-size: 0.82em;
+  }
+  .cmeter__btn {
+    gap: 5px;
+    padding-left: 8px;
+    padding-right: 9px;
+  }
+  .nav__right {
+    gap: 6px;
+  }
+}

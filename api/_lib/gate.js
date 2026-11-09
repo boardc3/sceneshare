@@ -1,6 +1,6 @@
 import { authEnabled, sessionUser } from './auth.js'
 import { config } from './config.js'
-import { propertyRow } from './db.js'
+import { accountSeat, propertyRow } from './db.js'
 import { ApiError, isEmail } from './http.js'
 
 // Owners act signed in (Chris, 2026-11-04: "The user must be logged in to search
@@ -11,8 +11,13 @@ export async function requireUser(req, res) {
   if (!authEnabled()) throw new ApiError(503, 'accounts_not_configured', 'Accounts are not set up yet.')
   const user = await sessionUser(req, res)
   if (!user) throw new ApiError(401, 'sign_in_required', 'Sign in to continue.')
+  if (!(await hasSeat(user))) throw new ApiError(403, 'accounts_full', FULL_MESSAGE)
   return user
 }
+
+// Early access is limited to config.maxAccounts accounts (admins always get in).
+export const FULL_MESSAGE = 'Sceneshare is in early access and every spot is taken for now. Email Chris@sceneset.ai to be added.'
+export const hasSeat = async (user) => isAdmin(user) || (await accountSeat(user, config.maxAccounts))
 
 export const isAdmin = (user) => Boolean(user?.emailVerified && config.adminEmails.includes(user.email))
 

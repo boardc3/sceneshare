@@ -491,6 +491,24 @@ export function captureLead({ email, lang = null, context = null, source = null,
   })
 }
 
+// Early access holds a fixed number of accounts. An account has a seat once its
+// users row exists; a new one gets a seat while there is room.
+const seated = new Set()
+export async function accountsCount() {
+  const s = await ensure()
+  if (!s) return 0
+  const [r] = await s`select count(*)::int as n from users`
+  return r?.n || 0
+}
+export async function accountSeat(user, max) {
+  if (!max || seated.has(user.id)) return true
+  const s = await ensure()
+  if (!s) return true
+  const [r] = await s`select exists(select 1 from users where id = ${user.id}) as mine, (select count(*)::int from users) as n`
+  if (r?.mine) seated.add(user.id)
+  return Boolean(r?.mine || (r?.n || 0) < max)
+}
+
 // Seen a signed-in user: keep the users row current, and on first sight move any
 // homes saved under their (verified) email before accounts existed into the account.
 export async function touchUser(user) {

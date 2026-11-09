@@ -4,7 +4,7 @@ import { TERMS_VERSION } from '../_lib/config.js'
 import { acceptTerms, addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, ownerAnalytics, setPrefs, touchUser } from '../_lib/db.js'
 import { background, ipHash } from '../_lib/log.js'
 import { removeImages } from '../_lib/storage.js'
-import { isAdmin, isSuperAdmin, newId, requireUser } from '../_lib/gate.js'
+import { FULL_MESSAGE, hasSeat, isAdmin, isSuperAdmin, newId, requireUser } from '../_lib/gate.js'
 import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 
 // GET              who is signed in (and moves homes saved under their verified email into the account)
@@ -33,6 +33,8 @@ export default route(
       }
       const user = authEnabled() ? await sessionUser(req, res) : null
       if (!user) return send(res, 200, { ok: true, accounts: authEnabled(), user: null })
+      // No seat left in early access: signed in, but no account is opened.
+      if (!(await hasSeat(user))) return send(res, 200, { ok: true, accounts: true, user, admin: false, superAdmin: false, claimed: 0, prefs: {}, terms: { accepted: false, at: null, version: TERMS_VERSION }, accountsFull: true, message: FULL_MESSAGE })
       const { claimed, prefs, termsAt, termsVersion } = await touchUser(user)
       res._meta = claimed ? { claimed } : null
       const terms = { accepted: Boolean(termsAt && termsVersion === TERMS_VERSION), at: termsAt, version: TERMS_VERSION }

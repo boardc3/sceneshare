@@ -1,4 +1,5 @@
 import { adminAnalytics, adminOverview, aiInputs, listErrors, reviewErrors, superUserDetail, superUsers } from '../_lib/db.js'
+import { config } from '../_lib/config.js'
 import { requireAdmin, requireSuperAdmin } from '../_lib/gate.js'
 import { query, readJson, route, send } from '../_lib/http.js'
 
@@ -24,7 +25,7 @@ export default route(
     // Super admin only: every user's own activity and growth.
     if (q.users === '1') {
       await requireSuperAdmin(req, res)
-      return send(res, 200, { ok: true, users: await superUsers(Number(q.days) || 30) })
+      return send(res, 200, { ok: true, users: { ...(await superUsers(Number(q.days) || 30)), caps: { accounts: config.maxAccounts, homes: config.maxHomes, renders: config.maxRenders } } })
     }
     if (q.user) {
       await requireSuperAdmin(req, res)

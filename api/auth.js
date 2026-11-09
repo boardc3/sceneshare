@@ -1,6 +1,8 @@
 import { authEnabled, proxyAuth } from './_lib/auth.js'
 import { logRequest } from './_lib/log.js'
-import { isTrustedOrigin } from './_lib/config.js'
+import { config, isTrustedOrigin } from './_lib/config.js'
+import { accountsCount } from './_lib/db.js'
+import { FULL_MESSAGE } from './_lib/gate.js'
 import { ApiError, enforceLimit, fail } from './_lib/http.js'
 
 // /api/auth/* → Neon Auth (vercel.json rewrites /api/auth/<path> to /api/auth?__path=<path>).
@@ -39,6 +41,12 @@ export default async function handler(req, res) {
         code = 'rate_limited'
         return fail(res, 429, code, 'Too many attempts. Wait a few minutes and try again.')
       }
+    }
+    // Early access: no new accounts once every spot is taken.
+    if (path === 'sign-up/email' && req.method === 'POST' && config.maxAccounts && (await accountsCount()) >= config.maxAccounts) {
+      status = 403
+      code = 'ACCOUNTS_FULL'
+      return fail(res, 403, code, FULL_MESSAGE)
     }
     status = await proxyAuth(req, res, path)
   } catch (e) {

@@ -40,6 +40,9 @@ const tierOf = (p) => (p === 'pro' ? 'premium' : TIERS.includes(p) ? p : null) /
 
 // ---------------------------------------------------------------- entitlement
 
+// Early access is on while billing is in preview (nobody can pay yet).
+export const earlyAccess = (mode = billingState()) => Boolean(config.earlyAccess && mode === 'preview' && (config.maxHomes || config.maxRenders))
+
 // The plan an account is on right now: trial, entry, premium or none (trial over).
 export function entitlement(row, user = null) {
   const mode = billingState()
@@ -66,6 +69,8 @@ export function entitlement(row, user = null) {
   if (live && sourceMatches) return { ...base, plan: tier, paid: true }
   if (user && isAdmin(user)) return { ...base, plan: 'premium', source: 'admin', daysLeft: null, periodEnd: null }
   const created = row?.created_at ? new Date(row.created_at).getTime() : now
+  // Early access: one allowance per account, with no end date.
+  if (earlyAccess(mode)) return { ...base, plan: 'trial', early: true, trial: { startedAt: new Date(created).toISOString(), endsAt: null, daysLeft: null, open: true } }
   const trialEnd = created + TRIAL_DAYS * 864e5
   if (now < trialEnd) return { ...base, plan: 'trial', trial: { endsAt: new Date(trialEnd).toISOString(), startedAt: new Date(created).toISOString(), daysLeft: Math.max(0, Math.ceil((trialEnd - now) / 864e5)) } }
   return base
@@ -74,6 +79,10 @@ export function entitlement(row, user = null) {
 export function limitsFor(ent, extraHomes = 0) {
   if (ent.unlimited) return { homes: null, credits: PLANS.premium.credits, emailsPerHome: null, designsPerHome: null }
   const l = { ...PLANS[ent.plan] }
+  if (ent.early) {
+    if (config.maxHomes) l.homes = config.maxHomes
+    if (config.maxRenders) l.credits = config.maxRenders
+  }
   if (ent.plan === 'premium') l.homes += extraHomes
   if (ent.source === 'admin') l.homes = null
   return l
@@ -111,6 +120,8 @@ export function creditCycle(ent, now = new Date()) {
     for (let i = 0; i < 14 && start > now; i++) start = addMonths(start, -1)
     return { start, next: addMonths(start, 1) }
   }
+  // Early access never resets: the cycle is the account's whole life.
+  if (ent.early) return { start: new Date(ent.trial.startedAt), next: null }
   if (ent.plan === 'trial' && ent.trial) return { start: new Date(ent.trial.startedAt), next: new Date(ent.trial.endsAt) }
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
   return { start, next: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)) }
@@ -133,8 +144,8 @@ async function creditsFor(user, ent, limits = limitsFor(ent)) {
     packs: c.packs,
     available: ent.plan === 'none' ? 0 : planLeft + c.packs,
     cycleStart: cyc.start.toISOString(),
-    resetsAt: cyc.next.toISOString(),
-    resetsInDays: Math.max(0, Math.ceil((cyc.next - Date.now()) / 864e5)),
+    resetsAt: cyc.next ? cyc.next.toISOString() : null,
+    resetsInDays: cyc.next ? Math.max(0, Math.ceil((cyc.next - Date.now()) / 864e5)) : null,
   }
 }
 
@@ -145,7 +156,7 @@ export async function billingFor(user, propertyId = null) {
   const limits = limitsFor(ent, extras.homes)
   const cyc = creditCycle(ent)
   const [usage, credits] = await Promise.all([usageFor(user.id, propertyId, cyc.start.toISOString()), creditsFor(user, ent, limits)])
-  return { ...ent, limits, usage: { ...usage, homesResetAt: cyc.next.toISOString() }, credits, extras, pages: pagesStatus(ent, row) }
+  return { ...ent, limits, usage: { ...usage, homesResetAt: cyc.next ? cyc.next.toISOString() : null }, credits, extras, pages: pagesStatus(ent, row) }
 }
 
 // Share pages stay up for 14 days after a plan (or the trial) ends, then show an
@@ -197,7 +208,7 @@ export async function chargeCredit(user, { kind, ref }) {
   })
   if (!pool) {
     const err = limitError('credits', limits.credits, ent)
-    err.extra.resetsAt = cyc.next.toISOString()
+    err.extra.resetsAt = cyc.next ? cyc.next.toISOString() : null
     throw err
   }
   return { id, pool, refund: () => refundCredit(id) }
@@ -208,6 +219,10 @@ export async function chargeCredit(user, { kind, ref }) {
 const PLAN_NAME = { trial: 'free trial', entry: 'Entry', premium: 'Premium', none: '' }
 
 function limitError(kind, limit, ent) {
+  if (ent.early && (kind === 'homes' || kind === 'credits')) {
+    const msg = kind === 'homes' ? `Early access includes ${limit} homes per account, and you’ve added them all. Email Chris@sceneset.ai if you need more.` : `Early access includes ${limit} renders per account, and you’ve used them all. Email Chris@sceneset.ai if you need more.`
+    return new ApiError(402, 'plan_limit', msg, { limit: kind, max: limit, plan: ent.plan, early: true })
+  }
   const msg = {
     expired: `Your plan has ended. Choose Entry or Premium to keep adding homes, rendering and sharing. Your share links stay online for ${PAGES_GRACE_DAYS} days after a plan ends.`,
     homes:
