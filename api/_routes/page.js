@@ -68,11 +68,11 @@ export default async function handler(req, res) {
       meta = head({ title: 'Sceneshare', description: 'This home is no longer shared.', image: `${origin}/media/og-home-2.jpg`, url: `${origin}/` })
     } else if (!ownerAccepted(row, TERMS_VERSION)) {
       // Not visible yet: the preview says nothing about the home.
-      meta = head({ title: zh ? 'Sceneshare 上分享的房屋' : 'A home shared on Sceneshare', description: zh ? '分享者完成设置后即可查看这套房屋。' : 'This home will be viewable once the person sharing it finishes setting it up.', image: `${origin}/media/og-home-2.jpg`, url: `${origin}/p/${id}${zh ? '?lang=zh' : ''}` })
+      meta = head({ title: zh ? 'Sceneshare 上分享的房屋' : 'A Home Shared on Sceneshare', description: zh ? '分享者完成设置后即可查看这套房屋。' : 'This home will be viewable once the person sharing it finishes setting it up.', image: `${origin}/media/og-home-2.jpg`, url: `${origin}/p/${id}${zh ? '?lang=zh' : ''}` })
     } else {
       const p = normalizeProperty(row.data)
       const a = p.address
-      const street = a ? `${a.streetNumber} ${a.route}${a.unit ? ` #${a.unit}` : ''}` : 'A home on Sceneshare'
+      const street = a ? `${a.streetNumber} ${a.route}${a.unit ? ` #${a.unit}` : ''}` : 'A Home on Sceneshare'
       const place = a ? `${a.city}, ${a.state}` : ''
       const f = p.facts || {}
       const facts = [f.beds && `${f.beds} bd`, f.baths && `${f.baths} ba`, f.livingArea && `${num(f.livingArea)} sq ft`].filter(Boolean).join(' · ')
