@@ -169,8 +169,14 @@ export default route(
       // Asked for listing photos after all: no longer an own-photos-only home.
       ownOnly: false,
       // Re-running replaces the listing set and keeps the owner's own photos.
-      // Street view stays first; then the listing set, then everything else in order.
-      photos: [...p.photos.filter((x) => x.source === 'streetview'), ...clean, ...p.photos.filter((x) => !SOURCES.includes(x.source) && x.source !== 'streetview')],
+      // The owner's own photos lead (after the street view); the listing set follows;
+      // the aerial closes.
+      photos: [
+        ...p.photos.filter((x) => x.source === 'streetview'),
+        ...p.photos.filter((x) => !SOURCES.includes(x.source) && x.source !== 'streetview' && x.source !== 'aerial'),
+        ...clean,
+        ...p.photos.filter((x) => x.source === 'aerial'),
+      ],
     }))
 
     await logSubmission({

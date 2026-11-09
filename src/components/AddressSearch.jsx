@@ -17,8 +17,10 @@ export default function AddressSearch({ onFind, onPreview, busy, ownOnlyDefault 
   const [active, setActive] = useState(-1);
   const [picked, setPicked] = useState(null);
   const [unit, setUnit] = useState("");
-  // Skip the photos from listing sites and work only from the owner's own.
-  const [ownOnly, setOwnOnly] = useState(ownOnlyDefault); // '' = none chosen; '__building' = whole building
+  // Own photos lead (Chris, 2026-11-09): listing photos from Zillow, Redfin and
+  // Homes.com only when the owner opts in.
+  const [withListing, setWithListing] = useState(false);
+  const ownOnly = !withListing; // '' = none chosen; '__building' = whole building
   const [typing, setTyping] = useState(false); // the "+ Apt or unit" field is open
   const [checking, setChecking] = useState(false);
   const [ask, setAsk] = useState(null); // { address, placeId, units } while the unit pop-up is open
@@ -225,10 +227,10 @@ export default function AddressSearch({ onFind, onPreview, busy, ownOnlyDefault 
           <label className="search__own">
             <input
               type="checkbox"
-              checked={ownOnly}
-              onChange={(e) => setOwnOnly(e.target.checked)}
+              checked={withListing}
+              onChange={(e) => setWithListing(e.target.checked)}
             />
-            <span>{t("search.ownOnly")}</span>
+            <span>{t("search.withListing")}</span>
           </label>
         </div>
       </form>

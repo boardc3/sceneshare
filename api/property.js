@@ -41,7 +41,8 @@ export default route(
 
     const id = existing || newId()
     const [parcel, pois] = await Promise.all([parcelFor(addr), nearby(addr.lat, addr.lng, lang)])
-    const ownOnly = body.ownOnly === true
+    // Own photos by default; listing photos only when asked for (ownOnly: false).
+    const ownOnly = body.ownOnly !== false
     const property = { id, createdAt: new Date().toISOString(), address: addr, parcel, pois, poisV: POI_VERSION, photos: [], facts: null, listing: null, designs: [], listingChecked: ownOnly, ownOnly }
     const saved = await upsertProperty(property, { user, origin: existing ? 'own' : 'address', lang, ownOnly })
     if (!saved.ok) throw new ApiError(403, 'not_owner', 'Only the account that saved this home can change it.')

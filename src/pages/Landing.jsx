@@ -23,7 +23,7 @@ export default function Landing() {
 
   // Searching saves the home to an account, so it needs one (Chris, 2026-11-04).
   const onFind = useCallback(
-    async ({ address, placeId, unit, ownOnly = false }) => {
+    async ({ address, placeId, unit, ownOnly = true }) => {
       setError('')
       track('address_search_start', { signedIn: false, unit: Boolean(unit) })
       const user = await requireSignIn('search', { type: 'search', address, placeId, unit, ownOnly })
@@ -56,7 +56,7 @@ export default function Landing() {
     if (!ready || resumed.current) return
     resumed.current = true
     const intent = user ? takeIntent() : null
-    if (intent?.type === 'search' && intent.address) onFind({ address: intent.address, placeId: intent.placeId, unit: intent.unit, ownOnly: intent.ownOnly })
+    if (intent?.type === 'search' && intent.address) onFind({ address: intent.address, placeId: intent.placeId, unit: intent.unit, ownOnly: intent.ownOnly !== false })
     if (intent?.type === 'own') navigate('/studio/new')
   }, [ready, user, onFind, navigate])
 
