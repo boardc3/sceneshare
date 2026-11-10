@@ -1,1 +1,0 @@
-var e={operator:`Sceneset AI`,service:`Sceneshare`,contactEmail:`Chris@sceneset.ai`,effective:`November 4, 2026`,site:`sceneshare.app`};export{e as t};
