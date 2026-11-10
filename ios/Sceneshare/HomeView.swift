@@ -16,15 +16,20 @@ final class HomeModel: ObservableObject {
     @Published var runTotal = 0
     @Published var runLabel = ""
     @Published var designId: String?          // the design shown on the photos
+    @Published var busyPhotos: Set<String> = []
+    @Published var stats: ShareTotals?
+    @Published var deleted = false
 
     init(id: String) { self.id = id }
 
-    var photos: [Photo] { (property?.photos ?? []).filter { $0.hidden != true } }
+    var photos: [Photo] { property?.photos ?? [] }
     var editable: [Photo] { photos.filter { $0.editable } }
     var designs: [Design] { property?.designs ?? [] }
     var design: Design? { designs.first { $0.id == designId } ?? designs.last }
     var uploading: Bool { uploadTotal > 0 }
     var running: Bool { runTotal > 0 }
+
+    func photo(_ photoId: String) -> Photo? { photos.first { $0.id == photoId } }
 
     func load() async {
         do {
@@ -35,6 +40,7 @@ final class HomeModel: ObservableObject {
             self.error = error.localizedDescription
         }
         loading = false
+        if let s: SharesResponse = try? await API.get("/api/shares?propertyId=\(id)") { stats = s.totals }
     }
 
     /// Photos picked from the library: loaded, shrunk and uploaded one at a time.
@@ -71,15 +77,17 @@ final class HomeModel: ObservableObject {
     }
 
     /// One run: create the design, render each photo (three at a time), finish.
-    func run(mode: String, style: String, light: String, note: String, session: Session) async {
-        let ids = editable.map { $0.id }
+    /// `only` limits the run to some photos (their own design round).
+    func run(mode: String, style: String, light: String, note: String, only: [String]? = nil, session: Session) async {
+        let ids = only ?? editable.map { $0.id }
         guard !ids.isEmpty, !running else { return }
-        runLabel = mode == "cleanup" ? "Making photos professional" : "Restyling"
+        runLabel = mode == "cleanup" ? "Making photos professional" : (mode == "polish" ? "Relighting" : "Restyling")
         runTotal = ids.count
         runDone = 0
         error = nil
         do {
-            let body: [String: Any] = ["op": "design.create", "propertyId": id, "mode": mode, "style": style, "light": light, "note": note, "lang": "en"]
+            var body: [String: Any] = ["op": "design.create", "propertyId": id, "mode": mode, "style": style, "light": light, "note": note, "lang": "en"]
+            if let only { body["photoIds"] = only }
             let created: DesignResponse = try await API.post("/api/properties", body)
             let did = created.design.id
             let propertyId = id
@@ -122,15 +130,65 @@ final class HomeModel: ObservableObject {
         await load()
         await session.refreshBilling()
     }
+
+    /// A change request on one photo of the design shown: "no rug", "warmer wood".
+    func change(photoId: String, note: String, session: Session) async {
+        guard let d = design, let pick = d.picks?[photoId] ?? nil else { return }
+        busyPhotos.insert(photoId)
+        error = nil
+        do {
+            let _: RenderResponse = try await API.post("/api/render", ["propertyId": id, "designId": d.id, "photoId": photoId, "feedback": note, "baseVersionId": pick, "lang": "en"])
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyPhotos.remove(photoId)
+        await load()
+        await session.refreshBilling()
+    }
+
+    /// Owner changes that are one call: hide or remove a photo, delete a round, rename.
+    func op(_ name: String, _ extra: [String: Any] = [:]) async {
+        var body: [String: Any] = ["op": name, "propertyId": id, "lang": "en"]
+        for (k, v) in extra { body[k] = v }
+        do {
+            let _: Empty = try await API.post("/api/properties", body)
+            if name == "property.delete" { deleted = true; return }
+        } catch {
+            self.error = error.localizedDescription
+        }
+        await load()
+    }
+
+    func setAddress(_ s: Suggestion) async {
+        do {
+            let _: Empty = try await API.post("/api/property", ["address": s.text, "placeId": s.placeId ?? "", "propertyId": id, "ownOnly": true, "lang": "en"])
+        } catch {
+            self.error = error.localizedDescription
+        }
+        await load()
+    }
+
+    /// Emails the buyer link from Sceneshare; returns the addresses that did not send.
+    func email(to recipients: String, name: String, message: String) async throws -> [String] {
+        let r: ShareResponse = try await API.post("/api/shares", ["propertyId": id, "channel": "email", "recipients": recipients, "name": name, "message": message, "lang": "en"])
+        await load()
+        return r.failed ?? []
+    }
 }
 
 struct HomeView: View {
     @EnvironmentObject var session: Session
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var model: HomeModel
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
     @State private var restyling = false
     @State private var open: Photo?
+    @State private var emailing = false
+    @State private var renaming = false
+    @State private var newName = ""
+    @State private var addressing = false
+    @State private var confirmDelete = false
 
     init(propertyId: String) {
         _model = StateObject(wrappedValue: HomeModel(id: propertyId))
@@ -141,17 +199,7 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if let error = model.error { ErrorBanner(text: error) }
-
-                if model.uploading {
-                    ProgressView("Uploading \(min(model.uploadDone + 1, model.uploadTotal)) of \(model.uploadTotal)", value: Double(model.uploadDone), total: Double(max(1, model.uploadTotal)))
-                }
-                if model.running {
-                    ProgressView("\(model.runLabel): \(model.runDone) of \(model.runTotal)", value: Double(model.runDone), total: Double(max(1, model.runTotal)))
-                    Text("Keep the app open. Each finished photo is saved as it lands.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                header
 
                 if model.editable.isEmpty && !model.loading && !model.uploading {
                     starter
@@ -159,16 +207,23 @@ struct HomeView: View {
                     addButtons
                 }
 
-                if model.designs.count > 0 {
+                if !model.designs.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(model.designs) { d in
                                 Button(d.name) { model.designId = d.id }
                                     .buttonStyle(.bordered)
-                                    .tint(model.design?.id == d.id ? Theme.glow : .gray)
+                                    .tint(model.design?.id == d.id ? Theme.glow : Color.gray)
+                                    .contextMenu {
+                                        Button("Show this one first to buyers") { Task { await model.op("design.feature", ["designId": d.id]) } }
+                                        Button("Delete this round", role: .destructive) { Task { await model.op("design.delete", ["designId": d.id]) } }
+                                    }
                             }
                         }
                     }
+                    Text("Press and hold a round to feature or delete it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 LazyVGrid(columns: columns, spacing: 8) {
@@ -203,9 +258,7 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if let p = model.property {
-                    ShareLink(item: p.shareURL, subject: Text(p.title), message: Text("Take a look at \(p.title) on Sceneshare."))
-                }
+                if let p = model.property { actions(p) }
             }
         }
         .task { await model.load() }
@@ -214,6 +267,9 @@ struct HomeView: View {
             guard !items.isEmpty else { return }
             picked = []
             Task { await model.upload(items: items) }
+        }
+        .onChange(of: model.deleted) { gone in
+            if gone { dismiss() }
         }
         .fullScreenCover(isPresented: $camera) {
             CameraPicker { image in Task { await model.upload(image: image) } }
@@ -224,10 +280,71 @@ struct HomeView: View {
                 restyling = false
                 Task { await model.run(mode: "redesign", style: style, light: light, note: note, session: session) }
             }
-            .presentationDetents([.large])
         }
         .sheet(item: $open) { photo in
-            PhotoDetail(photo: photo, design: model.design)
+            PhotoDetail(model: model, photoId: photo.id)
+        }
+        .sheet(isPresented: $emailing) {
+            EmailSheet(model: model)
+        }
+        .sheet(isPresented: $addressing) {
+            AddressSheet { suggestion in
+                addressing = false
+                Task { await model.setAddress(suggestion) }
+            }
+        }
+        .alert("Rename this home", isPresented: $renaming) {
+            TextField("Name", text: $newName)
+            Button("Save") { Task { await model.op("property.rename", ["name": newName]) } }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog("Delete this home and all of its photos? Its share link will stop working.", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete this home", role: .destructive) { Task { await model.op("property.delete") } }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        if let error = model.error { ErrorBanner(text: error) }
+
+        if let place = model.property?.address?.formatted {
+            Text(place).font(.subheadline).foregroundStyle(.secondary)
+        } else if model.property != nil {
+            Button("Add the address") { addressing = true }
+                .font(.subheadline)
+        }
+
+        if let s = model.stats, (s.shares ?? 0) + (s.views ?? 0) > 0 {
+            Text("\(Int(s.shares ?? 0)) shares · \(Int(s.recipients ?? 0)) people emailed · \(Int(s.opens ?? 0)) link clicks · \(Int(s.views ?? 0)) buyer views")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+
+        if model.uploading {
+            ProgressView("Uploading \(min(model.uploadDone + 1, model.uploadTotal)) of \(model.uploadTotal)", value: Double(model.uploadDone), total: Double(max(1, model.uploadTotal)))
+        }
+        if model.running {
+            ProgressView("\(model.runLabel): \(model.runDone) of \(model.runTotal)", value: Double(model.runDone), total: Double(max(1, model.runTotal)))
+            Text("Keep the app open. Each finished photo is saved as it lands.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func actions(_ p: Property) -> some View {
+        Menu {
+            ShareLink(item: p.shareURL, subject: Text(p.title), message: Text("Take a look at \(p.title) on Sceneshare.")) {
+                Label("Share the buyer link", systemImage: "square.and.arrow.up")
+            }
+            Button { emailing = true } label: { Label("Email buyers", systemImage: "envelope") }
+            Link(destination: p.shareURL) { Label("Preview the buyer page", systemImage: "safari") }
+            Divider()
+            Button { newName = p.nickname ?? ""; renaming = true } label: { Label("Rename", systemImage: "pencil") }
+            Button { addressing = true } label: { Label(p.address?.formatted == nil ? "Add the address" : "Change the address", systemImage: "mappin.and.ellipse") }
+            Button(role: .destructive) { confirmDelete = true } label: { Label("Delete this home", systemImage: "trash") }
+        } label: {
+            Image(systemName: "ellipsis.circle")
         }
     }
 
@@ -277,40 +394,211 @@ struct HomeView: View {
                 }
             )
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .opacity(photo.hidden == true ? 0.4 : 1)
             .overlay(alignment: .bottomTrailing) {
-                if shown != nil {
+                if model.busyPhotos.contains(photo.id) {
+                    ProgressView().padding(8)
+                } else if shown != nil {
                     Circle().fill(Theme.glow).frame(width: 12, height: 12).padding(8)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if photo.hidden == true {
+                    Image(systemName: "eye.slash.fill").font(.caption).padding(6).background(.thinMaterial, in: Circle()).padding(6)
                 }
             }
     }
 }
 
-/// One photo, full width: as photographed against the chosen design.
+/// One photo, full width: as photographed against the chosen design, with the
+/// things an owner does to a single photo.
 struct PhotoDetail: View {
-    let photo: Photo
-    let design: Design?
+    @ObservedObject var model: HomeModel
+    let photoId: String
+    @EnvironmentObject var session: Session
     @Environment(\.dismiss) private var dismiss
+    @State private var note = ""
+    @State private var confirmRemove = false
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                let after = design?.version(for: photo)
-                CompareView(before: API.url(photo.src), after: after.map { API.url($0.src) }, aspect: photo.aspect)
-                if after != nil {
-                    Text((design?.name ?? "") + " · AI concept rendering")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+            ScrollView {
+                if let photo = model.photo(photoId) {
+                    content(photo)
                 } else {
-                    Text("As photographed")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    Text("This photo was removed.").foregroundStyle(.secondary).padding(40)
                 }
-                Spacer()
             }
-            .padding(12)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ photo: Photo) -> some View {
+        let after = model.design?.version(for: photo)
+        let busy = model.busyPhotos.contains(photo.id) || model.running
+        VStack(alignment: .leading, spacing: 16) {
+            CompareView(before: API.url(photo.src), after: after.map { API.url($0.src) }, aspect: photo.aspect)
+            Text(after != nil ? (model.design?.name ?? "") + " · AI concept rendering" : (photo.source == "aerial" ? "Aerial view, shown as captured" : "As photographed"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            if let error = model.error { ErrorBanner(text: error) }
+
+            if after != nil {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Ask for a change").font(.headline)
+                    TextField("e.g. no rug, warmer wood, keep the blanket", text: $note, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(2...4)
+                    Button {
+                        let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                        note = ""
+                        Task { await model.change(photoId: photo.id, note: text, session: session) }
+                    } label: {
+                        if busy { ProgressView() } else { Text("Apply the change (1 render)") }
+                    }
+                    .buttonStyle(GlowButtonStyle())
+                    .disabled(busy || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+
+            if photo.editable {
+                Button {
+                    dismiss()
+                    Task { await model.run(mode: "cleanup", style: "signature", light: "daylight", note: "", only: [photo.id], session: session) }
+                } label: {
+                    Label("Make this photo professional (1 render)", systemImage: "wand.and.stars")
+                }
+                .disabled(busy)
+            }
+            Button {
+                Task { await model.op("photo.hide", ["photoId": photo.id, "hidden": !(photo.hidden ?? false)]) }
+            } label: {
+                Label(photo.hidden == true ? "Show to buyers" : "Hide from buyers", systemImage: photo.hidden == true ? "eye" : "eye.slash")
+            }
+            Button(role: .destructive) { confirmRemove = true } label: {
+                Label("Remove this photo", systemImage: "trash")
+            }
+        }
+        .padding(12)
+        .confirmationDialog("Remove this photo and its renders?", isPresented: $confirmRemove, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                dismiss()
+                Task { await model.op("photo.delete", ["photoId": photo.id]) }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+}
+
+/// Sceneshare emails the buyer link (tracked, one email per person).
+struct EmailSheet: View {
+    @ObservedObject var model: HomeModel
+    @EnvironmentObject var session: Session
+    @Environment(\.dismiss) private var dismiss
+    @State private var recipients = ""
+    @State private var message = ""
+    @State private var busy = false
+    @State private var result: String?
+    @State private var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("To (up to 10, separated by commas)") {
+                    TextField("buyer@example.com", text: $recipients, axis: .vertical)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Section("Message (optional)") {
+                    TextField("A note to go with the link", text: $message, axis: .vertical)
+                        .lineLimit(3...8)
+                }
+                if let error { ErrorBanner(text: error).listRowInsets(EdgeInsets()) }
+                if let result { Text(result).foregroundStyle(.secondary) }
+                Section {
+                    Button {
+                        send()
+                    } label: {
+                        if busy { ProgressView() } else { Text("Send") }
+                    }
+                    .buttonStyle(GlowButtonStyle())
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .disabled(busy || recipients.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .navigationTitle("Email Buyers")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+            }
+        }
+    }
+
+    private func send() {
+        busy = true
+        error = nil
+        result = nil
+        Task {
+            do {
+                let failed = try await model.email(to: recipients, name: session.user?.name ?? "", message: message)
+                result = failed.isEmpty ? "Sent." : "Sent, except: " + failed.joined(separator: ", ")
+                if failed.isEmpty { recipients = "" }
+            } catch {
+                self.error = error.localizedDescription
+            }
+            busy = false
+        }
+    }
+}
+
+/// Look up an address for a home that started with photos.
+struct AddressSheet: View {
+    let onPick: (Suggestion) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var suggestions: [Suggestion] = []
+    @State private var lookup: Task<Void, Never>?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                TextField("Street address", text: $query)
+                    .textContentType(.fullStreetAddress)
+                    .autocorrectionDisabled()
+                    .onChange(of: query) { value in search(value) }
+                ForEach(suggestions) { s in
+                    Button { onPick(s) } label: {
+                        VStack(alignment: .leading) {
+                            Text(s.main ?? s.text).foregroundStyle(.primary)
+                            if let sec = s.secondary { Text(sec).font(.footnote).foregroundStyle(.secondary) }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Address")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+        }
+    }
+
+    private func search(_ value: String) {
+        lookup?.cancel()
+        let text = value.trimmingCharacters(in: .whitespaces)
+        guard text.count >= 4 else { suggestions = []; return }
+        lookup = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            let q = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let r: SuggestResponse = try? await API.get("/api/autocomplete?q=\(q)&lang=en"), !Task.isCancelled {
+                suggestions = r.suggestions ?? []
             }
         }
     }

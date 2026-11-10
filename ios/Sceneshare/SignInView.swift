@@ -49,6 +49,12 @@ struct SignInView: View {
                 }
                 .frame(maxWidth: .infinity)
 
+                if !creating {
+                    Link("Forgot your password?", destination: API.url("/reset"))
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity)
+                }
+
                 Text("The same account works on sceneshare.app.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)

@@ -39,6 +39,8 @@ struct HomesView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
                         if let email = session.user?.email { Text(email) }
+                        Link("Buyer analytics", destination: API.url("/analytics"))
+                        Link("Account and data (delete account)", destination: API.url("/account"))
                         Link("Open sceneshare.app", destination: API.base)
                         Button("Sign out", role: .destructive) { Task { await session.signOut() } }
                     } label: {
@@ -51,6 +53,9 @@ struct HomesView: View {
             }
             .refreshable { await load() }
             .task { await load() }
+            .onChange(of: path) { value in
+                if value.isEmpty { Task { await load(); await session.refreshBilling() } }
+            }
             .sheet(isPresented: $adding) {
                 AddHomeSheet { id in
                     adding = false

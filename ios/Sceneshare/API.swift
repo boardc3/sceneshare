@@ -215,6 +215,22 @@ struct UploadResponse: Decodable {
     let photo: Photo
 }
 
+struct ShareTotals: Decodable {
+    let shares: Double?
+    let recipients: Double?
+    let opens: Double?
+    let views: Double?
+}
+
+struct SharesResponse: Decodable {
+    let totals: ShareTotals?
+}
+
+struct ShareResponse: Decodable {
+    let url: String?
+    let failed: [String]?
+}
+
 struct Suggestion: Decodable, Identifiable, Hashable {
     let placeId: String?
     let text: String
