@@ -40,7 +40,7 @@ export function Nav({ tone = 'light' }) {
     )}
     <header className={`nav nav--${tone}`}>
       <Link to="/" className="wordmark" aria-label={t('brand')}>
-        Sceneshare
+        Sceneshare <sup className="nav__beta">{t('beta.tag')}</sup>
       </Link>
       <nav className="nav__right" aria-label="Site">
         <div className="langtoggle" role="group" aria-label={t('nav.lang')}>

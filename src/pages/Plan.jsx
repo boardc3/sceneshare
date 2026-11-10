@@ -279,8 +279,9 @@ function Tiers({ b, prices, plans, busy, run, managed }) {
               <p className="plan__label">{t(`plan.tier.${tier}.tag`)}</p>
               <h3>{t(`plan.name.${tier}`)}</h3>
               <p className="plan__price">
-                {money(prices[tier][interval], lang)} <span>{per}</span>
+                <s className="plan__was" aria-label={t('pricing.was', { price: money(prices[tier][interval] * 2, lang) })}>{money(prices[tier][interval] * 2, lang)}</s> {money(prices[tier][interval], lang)} <span>{per}</span>
               </p>
+              <p className="plan__betaprice">{t('pricing.beta')}</p>
               <ul>
                 <li>{t('plan.f.homes', { n: p.homes })}</li>
                 <li>{t('plan.f.credits', { n: p.credits })}</li>

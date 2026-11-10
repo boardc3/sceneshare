@@ -5780,3 +5780,34 @@ body.is-modal {
   width: min(100%, calc(82vh * var(--ar, 1.5)));
   margin-inline: auto;
 }
+
+/* Beta: the tag by the wordmark, and beta prices beside the regular one. */
+.nav__beta {
+  font-family: var(--sans);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--glow);
+  color: var(--dusk);
+  vertical-align: super;
+}
+.plan__was {
+  font-size: 0.6em;
+  opacity: 0.55;
+  text-decoration-thickness: 2px;
+  margin-right: 4px;
+}
+.plan__betaprice {
+  display: inline-block;
+  margin: 8px 0 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--glow) 22%, transparent);
+  color: inherit;
+  width: fit-content;
+}

@@ -7,7 +7,7 @@ import { useRouter } from '../router.jsx'
 // pay-as-you-go add-ons. The server's billing module holds the real numbers;
 // these mirror api/_lib/billing.js (PLANS, PRICES, EXTRA, CREDIT_PACKS).
 const TIERS = [
-  { key: 'trial', price: null, homes: 2, credits: 50 },
+  { key: 'trial', price: null, homes: 5, credits: 100 }, // the early-access allowance (ACCOUNT_MAX_HOMES / _RENDERS)
   { key: 'entry', price: 49, homes: 2, credits: 150 },
   { key: 'premium', price: 99, homes: 5, credits: 300 },
 ]
@@ -30,12 +30,20 @@ export default function Pricing() {
         {TIERS.map((p) => (
           <article key={p.key} className={`plan__card pricing__card ${p.key === 'premium' ? 'plan__card--pro' : ''}`}>
             <p className="plan__label">{t(`pricing.${p.key}.tag`)}</p>
-            <h3>{t(`plan.name.${p.key}`)}</h3>
+            <h3>{t(p.key === 'trial' ? 'plan.name.early' : `plan.name.${p.key}`)}</h3>
             <p className="plan__price">
-              {p.price == null ? t('pricing.free') : `$${p.price}`} <span>{p.price == null ? t('pricing.sevenDays') : t('plan.perMonth')}</span>
+              {p.price == null ? (
+                t('pricing.free')
+              ) : (
+                <>
+                  <s className="plan__was" aria-label={t('pricing.was', { price: `$${p.price * 2}` })}>${p.price * 2}</s> ${p.price}
+                </>
+              )}{' '}
+              <span>{p.price == null ? t('pricing.duringBeta') : t('plan.perMonth')}</span>
             </p>
+            {p.price != null && <p className="plan__betaprice">{t('pricing.beta')}</p>}
             <ul>
-              <li>{t('pricing.homes', { n: p.homes })}</li>
+              <li>{t(p.key === 'trial' ? 'pricing.homesBeta' : 'pricing.homes', { n: p.homes })}</li>
               <li>{t(p.key === 'trial' ? 'pricing.creditsTrial' : 'pricing.credits', { n: p.credits })}</li>
               <li>{t('pricing.share')}</li>
               {p.key === 'premium' && <li className="tiers__extra">{t('pricing.extraProps')}</li>}
