@@ -11,9 +11,7 @@
     "build": "node scripts/demo-media.mjs && vite build",
     "preview": "vite preview",
     "check": "node scripts/check.mjs",
-    "dev:demo": "node scripts/demo-media.mjs && node --import ./scripts/dev-mocks.mjs node_modules/vite/bin/vite.js --mode demo",
-    "ios:sync": "vite build && cap sync ios",
-    "ios:open": "cap open ios"
+    "dev:demo": "node scripts/demo-media.mjs && node --import ./scripts/dev-mocks.mjs node_modules/vite/bin/vite.js --mode demo"
   },
   "dependencies": {
     "@neondatabase/auth": "0.7.0-beta",
@@ -27,10 +25,6 @@
     "sharp": "^0.35.5"
   },
   "devDependencies": {
-    "@capacitor/assets": "^4.0.0",
-    "@capacitor/cli": "^7.6.10",
-    "@capacitor/core": "^7.6.10",
-    "@capacitor/ios": "^7.6.10",
     "@electric-sql/pglite": "0.3.16",
     "@vitejs/plugin-react": "^6.2.1",
     "vite": "^8.3.5"
