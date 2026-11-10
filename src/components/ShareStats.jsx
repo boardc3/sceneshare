@@ -71,6 +71,7 @@ export default function ShareStats({ id, refreshKey = 0, photos = null }) {
   }, [load, refreshKey])
   if (!data?.totals) return null
   const T = data.totals
+  if (!T.shares && !T.recipients && !T.opens && !T.views) return null
   return (
     <section className="sharestats" aria-label={t('stats.title')}>
       <button type="button" className="sharestats__sum" aria-expanded={open} onClick={() => setOpen((o) => !o)} disabled={!data.shares.length}>

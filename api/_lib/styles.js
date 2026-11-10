@@ -22,8 +22,8 @@ REDESIGN REQUIREMENTS (DO ALL OF THESE, CONSISTENTLY):
 
 1) ARCHITECTURAL FINISH UPGRADE (WITHOUT CHANGING ARCHITECTURE)
 - Walls: Upgrade to flawless high-end finishes (plaster, refined paint, designer wallcovering) appropriate to the room.
-- Trim: Add or refine premium trim language (thin reveals, elegant baseboards/casing, subtle crown if appropriate), but do not change the room geometry.
-- Ceilings: Elevate with luxury detailing (coffered/beamed/architectural trim language) ONLY if it fits the existing style and does not alter perceived room height unnaturally.
+- Trim: refine the existing trim (baseboards, casings, reveals) with a premium profile and finish, in the same positions.
+- Ceilings: keep the ceiling's exact shape and height; upgrade only its finish (smooth plaster, fresh paint) and its light fixtures.
 - Transitions: Ensure all material transitions are clean, premium, and architecturally correct (no awkward seams).
 
 2) FLOORS & STONEWORK
@@ -44,7 +44,7 @@ Upgrade every visible "touch point" to designer-grade:
 The lighting must feel like an architect planned it:
 - Layered lighting: ambient + accent + decorative.
 - Warm, controlled color temperature; soft highlights; no harsh glare.
-- Add subtle architectural lighting where appropriate (cove glow, picture lights, under-cabinet lighting, or recessed strategy) WITHOUT changing ceiling structure.
+- Add subtle lighting where appropriate (picture lights, under-cabinet lighting, toe-kick and shelf lighting, slim recessed downlights) WITHOUT changing the ceiling's shape.
 - Ensure all lighting appears physically plausible and consistent with shadows and reflections.
 
 5) FURNITURE, SOFT GOODS, AND SCALE
@@ -205,7 +205,7 @@ DESIGN DIRECTION — TIMELESS ESTATE:
 
 1) ARCHITECTURAL ENRICHMENT
 - Add richness through millwork: wainscoting, raised panel walls, library-style built-ins, elegant chair rails.
-- Coffered or beamed ceilings where appropriate — detailed but not heavy or oppressive.
+- Ceilings keep their existing shape (existing beams or coffers are refinished; none are added).
 - Crown molding with classical profiles, but proportioned for modern sensibility (not overly ornate).
 - Arched doorways or transoms if existing architecture supports it.
 - Every transition (baseboard to wall, wall to ceiling, trim to surface) should be detailed and intentional.
@@ -487,7 +487,7 @@ DESIGN DIRECTION — COASTAL MODERN:
 1) SPATIAL PHILOSOPHY
 - Light is the protagonist: the space should feel sun-drenched and luminous at every hour.
 - Open, flowing floor plans with strong indoor-outdoor connection (implied even if windows are limited).
-- Organic forms and curved elements soften architectural rigidity — arched doorways, rounded furniture.
+- Organic forms and curved elements soften architectural rigidity — rounded furniture and curved decor (door and window openings keep their shape).
 - The ocean isn't referenced literally (no seashells, no anchors) — it's evoked through light, color, and texture.
 - Think: the architectural purity of a Greek island villa meeting California's relaxed luxury.
 
@@ -516,7 +516,7 @@ DESIGN DIRECTION — COASTAL MODERN:
 5) LIGHTING
 - Natural light maximized: sheer curtains only, no heavy drapes blocking windows.
 - Warm, diffused artificial light: woven pendants, alabaster sconces, ceramic table lamps.
-- Hidden LED strips in architectural coves — creating a soft ambient glow like reflected water light.
+- Hidden LED strips under shelves, behind headboards and along toe-kicks — creating a soft ambient glow like reflected water light.
 - Color temperature: 2700K-3000K. Golden and warm, like afternoon sun.
 - Statement fixture: a large woven pendant or sculptural organic-form chandelier as centerpiece.
 - Candle-like fixtures and lanterns adding to the relaxed, warm atmosphere.
@@ -587,7 +587,7 @@ DESIGN DIRECTION — EXECUTIVE MODERN:
 5) LIGHTING
 - Task-oriented and architectural: every light serves a purpose.
 - Desktop: architect lamps (Artemide Tolomeo, Flos Kelvin) as functional accents.
-- Ambient: linear recessed lighting, architectural cove lighting, LED strips under floating shelves.
+- Ambient: linear recessed lighting, LED strips under floating shelves.
 - Pendant: geometric, minimal — a single statement fixture in dark metal or brushed aluminum.
 - Color temperature: 3000K-3500K — crisp and clear, like a well-lit studio or gallery.
 - Smart lighting implied: scenes, automation, adjustable intensity — technology serving function.

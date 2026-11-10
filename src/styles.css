@@ -5697,3 +5697,86 @@ body.is-modal {
 .beta__foot {
   margin-top: 36px;
 }
+
+/* Studio: the first thing an empty home shows, and the folded sections. */
+.starter {
+  margin: 8px 0 28px;
+  padding: 44px 28px;
+  border: 2px dashed color-mix(in srgb, var(--dusk) 28%, transparent);
+  border-radius: 20px;
+  background: #fff;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.starter.is-over {
+  border-color: var(--glow);
+  background: color-mix(in srgb, var(--glow) 8%, #fff);
+}
+.starter h2 {
+  font-family: var(--serif);
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  margin: 0 0 8px;
+}
+.starter p {
+  margin: 0 auto 22px;
+  max-width: 46ch;
+  color: var(--muted, #5b6770);
+}
+.starter__go {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+.starter__steps {
+  list-style: none;
+  counter-reset: st;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 26px;
+  margin: 26px 0 0;
+  padding: 0;
+  font-size: 0.92rem;
+  color: var(--muted, #5b6770);
+}
+.starter__steps li {
+  counter-increment: st;
+}
+.starter__steps li::before {
+  content: counter(st) '  ';
+  font-weight: 700;
+  color: var(--dusk);
+}
+@media (min-width: 900px) {
+  .starter__cam {
+    display: none; /* the camera button is for phones */
+  }
+}
+.linkfold {
+  margin: 10px 0;
+  font-size: 0.9rem;
+}
+.linkfold summary {
+  cursor: pointer;
+  color: var(--muted, #5b6770);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.linkfold .linkimport {
+  margin-top: 8px;
+}
+.newdesign__open {
+  margin-top: 16px;
+}
+.location--folded {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+/* Studio stage: a tall photo never pushes the controls off the screen. */
+.viewer__frame .compare {
+  width: min(100%, calc(82vh * var(--ar, 1.5)));
+  margin-inline: auto;
+}

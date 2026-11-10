@@ -43,14 +43,31 @@ BUILDING LOCK (exteriors)
 - Same footprint, same garage doors in the same places, same balconies, decks, railings positions and stairs.
 - May change: exterior finishes and colours, window and door frame finishes, lighting fixtures, landscaping and hardscape inside the property, outdoor furniture, pool finishes (never the pool's shape or size).
 
+SITE LOCK (exteriors and outdoor spaces)
+- The ground keeps its real shape: slopes stay sloped, steps stay steps, level changes and retaining walls stay where they are. Do not flatten, regrade or terrace anything.
+- Driveways, paths, parking pads, gates and fences keep their position and outline. Do NOT add a driveway, path, gate, pool, deck or structure that is not in the photograph; resurface the ones that exist.
+- Mature trees and established hedges stay, in the same places and at the same size. Planting may be refreshed and added in existing beds only.
+
 FUNCTION LOCK
 - A kitchen stays a kitchen, a bedroom stays a bedroom, a bathroom keeps its fixtures in the same positions (toilet, tub, shower, vanity stay where they are). Do not change what the room is for.`
 
+// What a restyle is for: owners asked for "more drastic changes in material colors
+// and finishes" when a take played it safe, and for rooms that match each other.
+const AMBITION = `HOW FAR TO GO
+- The geometry is frozen; the design is not. Within the locks above, the change must be obvious at a glance when the two images are compared: every dated finish, fixture and furnishing is replaced, not lightly retouched. A timid result that mostly repaints the same room is a failure.
+- Flooring, cabinetry fronts, counters, tile, wall finish, hardware, light fixtures, window treatments, furniture, rugs, bedding, art and styling all change to the design direction. Their positions, outlines and sizes stay.
+- Keep any object the owner's direction names to keep, exactly as photographed.
+
+ONE HOME, ONE PALETTE
+- This photograph is one of a set of the same home being restyled in the same direction. Use the direction's primary choices so the rooms match one another: one wood tone, one stone, one metal finish, one wall colour, one flooring material throughout. Do not pick a different alternative for each photo.`
+
 const LIGHT = {
   daylight: `LIGHT — BRIGHT, CLEAN DAYLIGHT
+- Neutral white balance (about 5200K): whites read white. No sepia, yellow, orange or amber cast over the image; warmth comes only from the lamps themselves.
 - Soft, bright natural daylight as from a clear late morning. Interiors: daylight from the existing windows only, balanced with warm 2700–3000K practical lights switched on at low level. Exteriors: clear blue sky as already photographed, soft directional sun, gentle shadows.
 - Physically consistent: shadows fall from the real window and sun positions; reflections in glass, stone and metal match the light.`,
   golden: `LIGHT — GOLDEN HOUR
+- Warm, not sepia: sunlit surfaces glow warm while shadows and white surfaces stay clean and neutral. No overall orange or brown wash.
 - Warm low sun, roughly one hour before sunset, raking softly across surfaces. Long gentle shadows, warm highlights on stone, wood and plaster.
 - Interiors: warm sun through the EXISTING windows only, interior lamps glowing softly at 2700K. Exteriors: warm light on the facade, landscape lighting just beginning to glow.
 - The sky seen through windows and above the property keeps its real content (same clouds, same horizon, same objects); only its colour warms.`,
@@ -145,7 +162,7 @@ export const RETRY_PREFIX = `SECOND ATTEMPT. The previous attempt changed the ca
 
 export function buildRenderPrompt({ mode = 'redesign', style = 'signature', light = 'daylight', note = '' }) {
   const lightBlock = LIGHT[light] || LIGHT.daylight
-  const extra = note ? `\nADDITIONAL DIRECTION FROM THE OWNER (apply within every lock above): ${note.slice(0, 600)}\n` : ''
+  const extra = note ? `\nTHE OWNER'S OWN DIRECTION — this outranks the design direction above wherever the two differ, and is applied within every lock: ${note.slice(0, 600)}\n` : ''
   if (mode === 'cleanup') {
     const proExtra = note ? `\nADDITIONAL DIRECTION FROM THE AGENT (within everything above): ${note.slice(0, 600)}\n` : ''
     return [PRO_ROLE, PRO_KEEP, PRO_FIX, PRO_LIGHT[light] || PRO_LIGHT.daylight, proExtra, PRO_NEGATIVES, 'REMINDER: SAME HOME, SAME ROOM, SAME FURNITURE, SAME VIEW — SHOT AND RETOUCHED LIKE A HIGH-END LISTING PHOTOGRAPH.'].join('\n\n')
@@ -157,7 +174,8 @@ export function buildRenderPrompt({ mode = 'redesign', style = 'signature', ligh
   return [
     SHOT,
     LOCKS,
-    `DESIGN DIRECTION (applies to finishes, fixtures, furniture, lighting design, landscape and styling ONLY — never to structure, openings, camera or view):\n${s.prompt}`,
+    `DESIGN DIRECTION (applies to finishes, fixtures, furniture, lighting design, landscape and styling ONLY — never to structure, openings, camera or view. Where anything in it disagrees with a lock above, the lock wins):\n${s.prompt}`,
+    AMBITION,
     lightBlock,
     FINISH,
     extra,
@@ -169,6 +187,9 @@ export function buildRenderPrompt({ mode = 'redesign', style = 'signature', ligh
 // Feedback edit pass on the best take (runbook: "edit pass on the best take,
 // change ONLY …"). Reference 1 = source photograph (geometry truth), reference 2 =
 // the current proposal (design truth).
+// "The door should say Floor B", "add the number 3C".
+const wantsText = (s) => /\b(say|says|read|reads|letter|letters|number|numbered|text|sign|label|word|words)\b|[“"'][^”"']{1,24}[”"']/i.test(String(s || ''))
+
 export function buildFeedbackPrompt({ feedback, light = 'original' }) {
   return [
     `EDIT PASS — CHANGE ONLY WHAT IS ASKED.
@@ -177,12 +198,16 @@ Reference 2 is the CURRENT PROPOSED DESIGN of the same space from the same camer
 Produce reference 2 again with ONLY this change, as requested by the owner:
 "${String(feedback).slice(0, 800)}"
 Everything the request does not mention stays exactly as in reference 2: same furniture, same finishes, same colours, same objects in the same places, same light.
+Carry the request out fully and visibly. If it asks for a different material, colour, finish, style or level of quality, change every surface it applies to; do not return reference 2 almost unchanged.
+The request may move, add or remove furniture, fixtures, planting and objects, and may rearrange fixtures inside the room (for example a larger shower, a longer vanity, a desk on another wall): do that, inside the same walls. The FOOTPRINT RULE and the fixture positions in the FUNCTION LOCK below give way to the request; every other lock holds.
+If the request asks for specific words, letters or numbers on something (a door number, a sign), render exactly those characters, cleanly, and nothing else written.
+If the request asks to keep or bring back something from the original photograph, copy it from reference 1.
 If the request asks for anything that would change the structure, the room's dimensions, an opening, the camera or the view (for example "make the room bigger", "add a window", "raise the ceiling", "show the ocean"), do NOT do that part: keep the geometry of reference 1 and apply only the design part of the request.`,
     LOCKS,
     light !== 'original' ? LIGHT[light] : '',
     FINISH,
-    NEGATIVES,
-    'REMINDER: GEOMETRY FROM REFERENCE 1, DESIGN FROM REFERENCE 2, PLUS ONLY THE REQUESTED CHANGE.',
+    wantsText(feedback) ? NEGATIVES.replace('NO text, NO labels, NO captions, NO watermark, NO logo, NO signage, NO dimension lines.', 'NO text other than the exact characters the request asks for. NO captions, NO watermark, NO logo, NO dimension lines.') : NEGATIVES,
+    'REMINDER: GEOMETRY FROM REFERENCE 1, DESIGN FROM REFERENCE 2, PLUS THE REQUESTED CHANGE, CARRIED OUT IN FULL.',
   ]
     .filter(Boolean)
     .join('\n\n')

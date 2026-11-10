@@ -83,6 +83,9 @@ export default function Studio({ id }) {
   const [listingError, setListingError] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
   const [linkMsg, setLinkMsg] = useState(null) // { busy } | { ok, text }
+  const [composing, setComposing] = useState(false) // the new-design form, once a design exists
+  const [showMap, setShowMap] = useState(false)
+  const [dropping, setDropping] = useState(false)
   const [reviewing, setReviewing] = useState(null) // { designId, startAt } while the review pass is open
 
   useEffect(() => {
@@ -532,6 +535,38 @@ export default function Studio({ id }) {
         </p>
       )}
 
+      {!editable.length && !uploading && listing !== 'looking' && (
+        <section
+          className={`starter ${dropping ? 'is-over' : ''}`}
+          aria-labelledby="starter-h"
+          onDragOver={(e) => (e.preventDefault(), setDropping(true))}
+          onDragLeave={() => setDropping(false)}
+          onDrop={(e) => {
+            e.preventDefault()
+            setDropping(false)
+            addFiles([...e.dataTransfer.files].filter((f) => f.type.startsWith('image/')))
+          }}
+        >
+          <h2 id="starter-h">{t('starter.title')}</h2>
+          <p>{t('starter.body')}</p>
+          <div className="starter__go">
+            <label className="btn btn--glow btn--big">
+              {t('studio.upload')}
+              <input type="file" accept="image/*" multiple className="sr-only" onChange={(e) => addFiles([...e.target.files])} />
+            </label>
+            <label className="btn btn--ink btn--big starter__cam">
+              {t('studio.takePhoto')}
+              <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => addFiles([...e.target.files])} />
+            </label>
+          </div>
+          <ol className="starter__steps">
+            <li>{t('starter.s1')}</li>
+            <li>{t('starter.s2')}</li>
+            <li>{t('starter.s3')}</li>
+          </ol>
+        </section>
+      )}
+
       {/* ------------------------------------------------ photos */}
       <div className="workspace">
         <section className="viewer" aria-label={t('studio.photos')}>
@@ -771,6 +806,8 @@ export default function Studio({ id }) {
             </p>
           )}
           {property.address && listing !== 'looking' && (
+            <details className="linkfold" open={Boolean(linkMsg)}>
+            <summary>{t('link.fold')}</summary>
             <form className="linkimport" onSubmit={importLink}>
               <label htmlFor="linkimport">{t('link.label')}</label>
               <div className="linkimport__row">
@@ -785,6 +822,7 @@ export default function Studio({ id }) {
                 </p>
               )}
             </form>
+            </details>
           )}
           {exteriorMsg && (
             <p className="rail__status" role="status">
@@ -831,6 +869,7 @@ export default function Studio({ id }) {
       </div>
 
       {/* ------------------------------------------------ designs */}
+      {(editable.length > 0 || designs.length > 0) && (
       <section className="designs" aria-labelledby="designs-h">
         <div className="designs__head">
           <h2 id="designs-h">{t('design.title')}</h2>
@@ -900,6 +939,11 @@ export default function Studio({ id }) {
           </div>
         )}
 
+        {designs.length > 0 && !composing ? (
+          <button type="button" className="btn btn--quiet newdesign__open" onClick={() => setComposing(true)}>
+            + {t('design.new')}
+          </button>
+        ) : (
         <div className="newdesign">
           <h3>{designs.length ? t('design.new') : t('design.first')}</h3>
           <div className="seg seg--wide" role="group" aria-label={t('studio.mode.label')}>
@@ -947,10 +991,22 @@ export default function Studio({ id }) {
             <RunCost need={editable.length} />
           </div>
         </div>
+        )}
       </section>
+      )}
 
       {property.address ? (
-        <PropertyMap address={property.address} parcel={property.parcel} pois={property.pois} lotSqft={lotSqft(property.facts)} />
+        showMap ? (
+          <PropertyMap address={property.address} parcel={property.parcel} pois={property.pois} lotSqft={lotSqft(property.facts)} />
+        ) : (
+          <section className="location location--folded">
+            <h2>{t('map.title')}</h2>
+            <p className="fine">{t('map.folded')}</p>
+            <button type="button" className="btn btn--quiet btn--small" onClick={() => setShowMap(true)}>
+              {t('map.show')}
+            </button>
+          </section>
+        )
       ) : (
         <section className="location location--ask">
           <h2>{t('map.title')}</h2>

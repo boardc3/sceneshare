@@ -109,7 +109,7 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
 
   if (!after) {
     return (
-      <figure className={`compare compare--single ${ready ? '' : 'compare--loading'}`} style={ratio ? { aspectRatio: ratio } : undefined}>
+      <figure className={`compare compare--single ${ready ? '' : 'compare--loading'}`} style={ratio ? { aspectRatio: ratio, '--ar': ratio } : undefined}>
         <img ref={beforeRef} src={before} alt={alt} onLoad={onLoad} onError={() => mark('before')} draggable="false" />
         <Loading />
         {beforeLabel && <figcaption className="compare__tag compare__tag--left">{beforeLabel}</figcaption>}
@@ -121,7 +121,7 @@ export default function Compare({ before, after, width, height, beforeLabel, aft
     <figure
       className={`compare ${ready ? '' : 'compare--loading'}`}
       ref={box}
-      style={ratio ? { aspectRatio: ratio, '--pos': `${pos}%` } : { '--pos': `${pos}%` }}
+      style={ratio ? { aspectRatio: ratio, '--ar': ratio, '--pos': `${pos}%` } : { '--pos': `${pos}%` }}
       onPointerDown={(e) => {
         dragging.current = true
         moveTo(e.clientX)
