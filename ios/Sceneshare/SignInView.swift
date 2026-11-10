@@ -43,6 +43,22 @@ struct SignInView: View {
                 .buttonStyle(GlowButtonStyle())
                 .disabled(busy || email.isEmpty || password.isEmpty)
 
+                Button {
+                    busy = true
+                    error = nil
+                    Task {
+                        do { try await session.signInWithGoogle() } catch let e as APIError where e.code == "cancelled" {
+                        } catch { self.error = error.localizedDescription }
+                        busy = false
+                    }
+                } label: {
+                    Label("Continue with Google", systemImage: "g.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(busy)
+
                 Button(creating ? "I already have an account" : "Create a free beta account") {
                     creating.toggle()
                     error = nil
