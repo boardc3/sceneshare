@@ -139,7 +139,7 @@ const SCHOOL_NOT = /music|dance|driving|art|swim|surf|yoga|studio|tutor|language
 // added. Sparse areas get a second, wider pass.
 export const MIN_PLACES = 20
 const MAX_PLACES = 24
-export const POI_VERSION = 3
+export const POI_VERSION = 4
 const POI_CATEGORIES = [
   { key: 'elementary', group: 'schools', ids: ['elementary_school', 'school', 'education'], radius: 4000, accept: /elementary|primary|k-8|k-6/i, reject: SCHOOL_NOT },
   { key: 'middle', group: 'schools', ids: ['middle_school', 'school', 'education'], radius: 6000, accept: /middle|intermediate|junior high/i, reject: SCHOOL_NOT },
@@ -197,7 +197,7 @@ async function placesInCategory(cat, lat, lng, lang, widen = 1) {
       .filter((x) => (!cat.accept || cat.accept.test(label(x.p))) && (!cat.reject || !cat.reject.test(x.p.name || '')))
       .sort((a, b) => a.meters - b.meters)
     if (!found.length) continue // nothing suitable under this id → try the next one
-    return found.slice(0, MAX_PER[cat.key] || 3).map((best) => ({
+    return found.slice(0, MAX_PER[cat.key] || 6).map((best) => ({
       category: cat.key,
       group: cat.group,
       name: best.p.name || '',
@@ -215,11 +215,12 @@ async function placesInCategory(cat, lat, lng, lang, widen = 1) {
 function pickPlaces(lists, max) {
   const out = []
   const seen = new Set() // one place never fills two slots (a K-12 as "elementary" and "high")
-  for (let rank = 0; rank < 3; rank++) {
+  // Ranks past the third are only for reaching the minimum where categories are thin.
+  for (let rank = 0; rank < 6; rank++) {
     for (const list of lists) {
       const p = list[rank]
       if (!p || !p.name || seen.has(p.name.toLowerCase())) continue
-      if (rank > 0 && out.length >= max) continue
+      if (rank > 0 && out.length >= (rank < 3 ? max : MIN_PLACES)) continue
       seen.add(p.name.toLowerCase())
       out.push(p)
     }
