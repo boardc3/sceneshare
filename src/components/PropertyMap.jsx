@@ -17,9 +17,9 @@ const miles = (m) => (m / 1609.34 < 10 ? (m / 1609.34).toFixed(1) : Math.round(m
 
 // Classes a buyer thinks in (doc 07, rule 4). Older homes carry v1 categories.
 export const GROUPS = ['schools', 'outdoors', 'everyday', 'health', 'travel']
-const GROUP_OF = { elementary: 'schools', middle: 'schools', high: 'schools', school: 'schools', beach: 'outdoors', park: 'outdoors', grocery: 'everyday', cafe: 'everyday', dining: 'everyday', shopping: 'everyday', hospital: 'health', airport: 'travel', train: 'travel' }
+const GROUP_OF = { elementary: 'schools', middle: 'schools', high: 'schools', school: 'schools', pharmacy: 'health', gym: 'everyday', beach: 'outdoors', park: 'outdoors', grocery: 'everyday', cafe: 'everyday', dining: 'everyday', shopping: 'everyday', hospital: 'health', airport: 'travel', train: 'travel' }
 export const groupOf = (p) => p.group || GROUP_OF[p.category] || 'everyday'
-const ORDER = ['elementary', 'middle', 'high', 'school', 'park', 'beach', 'grocery', 'cafe', 'dining', 'shopping', 'hospital', 'train', 'airport']
+const ORDER = ['elementary', 'middle', 'high', 'school', 'park', 'beach', 'grocery', 'cafe', 'gym', 'dining', 'shopping', 'hospital', 'pharmacy', 'train', 'airport']
 
 // Rough door-to-door times, labelled "about": walking ~80 m/min; driving ~2 min + 33 km/h.
 const walkMin = (m) => Math.round(m / 80)
@@ -42,7 +42,8 @@ export default function PropertyMap({ address, parcel, pois = [], lotSqft = null
   const [hidden, setHidden] = useState(() => new Set())
   const [active, setActive] = useState(null)
 
-  const places = useMemo(() => [...pois].sort((a, b) => ORDER.indexOf(a.category) - ORDER.indexOf(b.category)), [pois])
+  // Several places can share a category now, so each gets its own key.
+  const places = useMemo(() => pois.map((x) => ({ ...x, key: `${x.category}|${x.name}` })).sort((a, b) => ORDER.indexOf(a.category) - ORDER.indexOf(b.category) || (a.meters || 0) - (b.meters || 0)), [pois])
   const groups = useMemo(() => GROUPS.filter((g) => places.some((p) => groupOf(p) === g)), [places])
 
   const detail = (p) => {
@@ -119,14 +120,14 @@ export default function PropertyMap({ address, parcel, pois = [], lotSqft = null
         const g = groupOf(p)
         const el = pinElement(`pin pin--poi pin--g-${g} pin--${p.category}`, p.category, t(`poi.${p.category}`))
         el.addEventListener('click', () => {
-          setActive(p.category)
+          setActive(p.key)
           track('map_place', { category: p.category, from: 'marker' })
         })
         const marker = new mapboxgl.Marker({ element: el })
           .setLngLat([p.lng, p.lat])
           .setPopup(new mapboxgl.Popup({ offset: 14 }).setDOMContent(popup(t(`poi.${p.category}`), p.name, detail(p))))
           .addTo(map)
-        markers.set(p.category, { marker, el })
+        markers.set(p.key, { marker, el })
         all.push([p.lng, p.lat])
         if (g !== 'travel') near.push([p.lng, p.lat])
       }
@@ -159,7 +160,7 @@ export default function PropertyMap({ address, parcel, pois = [], lotSqft = null
   useEffect(() => {
     markersRef.current.forEach(({ marker, el }, cat) => {
       if (!el) return
-      const p = places.find((x) => x.category === cat)
+      const p = places.find((x) => x.key === cat)
       const off = p && hidden.has(groupOf(p))
       el.style.display = off ? 'none' : ''
       if (off && marker.getPopup()?.isOpen()) marker.togglePopup()
@@ -193,13 +194,13 @@ export default function PropertyMap({ address, parcel, pois = [], lotSqft = null
   const showAll = () => setHidden(new Set())
   const focus = (p) => {
     const map = mapRef.current
-    const m = markersRef.current.get(p.category)
+    const m = markersRef.current.get(p.key)
     if (!map || !m) return
     if (hidden.has(groupOf(p))) setHidden((h) => new Set([...h].filter((g) => g !== groupOf(p))))
     markersRef.current.forEach(({ marker }) => marker.getPopup()?.isOpen() && marker.togglePopup())
     map.flyTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 14.5), essential: true })
     m.marker.togglePopup()
-    setActive(p.category)
+    setActive(p.key)
     box.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
     track('map_place', { category: p.category, from: 'list' })
   }
@@ -273,8 +274,8 @@ export default function PropertyMap({ address, parcel, pois = [], lotSqft = null
                   {places
                     .filter((p) => groupOf(p) === g)
                     .map((p) => (
-                      <li key={p.category}>
-                        <button type="button" className={`place ${active === p.category ? 'is-active' : ''}`} onClick={() => focus(p)} disabled={!ready}>
+                      <li key={p.key}>
+                        <button type="button" className={`place ${active === p.key ? 'is-active' : ''}`} onClick={() => focus(p)} disabled={!ready}>
                           <span className={`dot pin--g-${g} dot--${p.category}`} aria-hidden="true">
                             <PoiIcon kind={p.category} />
                           </span>

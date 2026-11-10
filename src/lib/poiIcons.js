@@ -14,6 +14,8 @@ export const POI_ICONS = {
   airport: 'M21 15.5 13.5 12V5.5a1.5 1.5 0 0 0-3 0V12L3 15.5v2l7.5-2.2V19l-2 1.5V22l3.5-1 3.5 1v-1.5l-2-1.5v-3.7l7.5 2.2z',
 }
 
+POI_ICONS.pharmacy = 'M9 3.5h6v5.5h5.5v6H15v5.5H9V15H3.5V9H9z'
+POI_ICONS.gym = 'M3 9.5v5M6 7v10M18 7v10M21 9.5v5M6 12h12'
 POI_ICONS.elementary = POI_ICONS.school
 POI_ICONS.middle = POI_ICONS.school
 POI_ICONS.high = POI_ICONS.school

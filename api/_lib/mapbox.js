@@ -133,7 +133,13 @@ export function bearing(a, b) {
 // health, travel — and schools are split by level. 12 places at most (doc 07: 3–8
 // is right, 12 is the ceiling).
 const SCHOOL_NOT = /music|dance|driving|art|swim|surf|yoga|studio|tutor|language|pre-?school|day ?care|beauty|cooking|flight|martial|karate|montessori|learning center|college|university|children'?s house|kids|tutoring|kumon|mathnasium/i
-export const POI_VERSION = 2
+// v3 (Chris, 2026-11-10: "all of the maps to have a minimum of 20 locations"): every
+// category keeps several candidates; the nearest of each comes first, then the
+// next-nearest fill in turn until the map has MIN_PLACES, with pharmacy and gym
+// added. Sparse areas get a second, wider pass.
+export const MIN_PLACES = 20
+const MAX_PLACES = 24
+export const POI_VERSION = 3
 const POI_CATEGORIES = [
   { key: 'elementary', group: 'schools', ids: ['elementary_school', 'school', 'education'], radius: 4000, accept: /elementary|primary|k-8|k-6/i, reject: SCHOOL_NOT },
   { key: 'middle', group: 'schools', ids: ['middle_school', 'school', 'education'], radius: 6000, accept: /middle|intermediate|junior high/i, reject: SCHOOL_NOT },
@@ -154,11 +160,16 @@ const POI_CATEGORIES = [
   },
   { key: 'airport', group: 'travel', ids: ['airport'], radius: 60000, accept: /airport|international/i, reject: /heli|airstrip|seaplane/i },
   { key: 'train', group: 'travel', ids: ['train_station', 'railway_station'], radius: 15000, accept: /station|metrolink|amtrak|transportation center/i },
+  { key: 'pharmacy', group: 'health', ids: ['pharmacy'], radius: 6000 },
+  { key: 'gym', group: 'everyday', ids: ['fitness_center', 'gym'], radius: 5000 },
 ]
+// How many of a category a map may show (a second airport or hospital is noise).
+const MAX_PER = { airport: 1, hospital: 2, train: 2, elementary: 2, middle: 2, high: 2, shopping: 2, pharmacy: 2, gym: 2 }
 
 const label = (p) => [p.name, ...(p.poi_category || []), ...(p.poi_category_ids || [])].filter(Boolean).join(' ')
 
-async function nearestInCategory(cat, lat, lng, lang) {
+// The suitable places of one category, nearest first.
+async function placesInCategory(cat, lat, lng, lang, widen = 1) {
   for (const id of cat.ids) {
     const params = new URLSearchParams({
       access_token: config.mapboxToken,
@@ -176,17 +187,17 @@ async function nearestInCategory(cat, lat, lng, lang) {
     }
     if (!r.ok) continue // unknown category id → try the next one
     const d = await r.json()
-    const best = (d.features || [])
+    const found = (d.features || [])
       .map((f) => {
         const p = f.properties || {}
         const loc = { lat: p.coordinates?.latitude ?? f.geometry?.coordinates?.[1], lng: p.coordinates?.longitude ?? f.geometry?.coordinates?.[0] }
         return { p, loc, meters: distanceMeters({ lat, lng }, loc) }
       })
-      .filter((x) => Number.isFinite(x.loc.lat) && x.meters <= cat.radius)
+      .filter((x) => Number.isFinite(x.loc.lat) && x.meters <= cat.radius * widen)
       .filter((x) => (!cat.accept || cat.accept.test(label(x.p))) && (!cat.reject || !cat.reject.test(x.p.name || '')))
-      .sort((a, b) => a.meters - b.meters)[0]
-    if (!best) continue // nothing suitable under this id → try the next one
-    return {
+      .sort((a, b) => a.meters - b.meters)
+    if (!found.length) continue // nothing suitable under this id → try the next one
+    return found.slice(0, MAX_PER[cat.key] || 3).map((best) => ({
       category: cat.key,
       group: cat.group,
       name: best.p.name || '',
@@ -195,15 +206,35 @@ async function nearestInCategory(cat, lat, lng, lang) {
       lng: best.loc.lng,
       meters: Math.round(best.meters),
       bearing: Math.round(bearing({ lat, lng }, best.loc)),
+    }))
+  }
+  return []
+}
+
+// Round-robin over the categories: every nearest first, then seconds, then thirds.
+function pickPlaces(lists, max) {
+  const out = []
+  const seen = new Set() // one place never fills two slots (a K-12 as "elementary" and "high")
+  for (let rank = 0; rank < 3; rank++) {
+    for (const list of lists) {
+      const p = list[rank]
+      if (!p || !p.name || seen.has(p.name.toLowerCase())) continue
+      if (rank > 0 && out.length >= max) continue
+      seen.add(p.name.toLowerCase())
+      out.push(p)
     }
   }
-  return null
+  return out
 }
 
 export async function nearby(lat, lng, lang = 'en') {
   if (!config.mapboxToken) return []
-  const out = (await Promise.all(POI_CATEGORIES.map((c) => nearestInCategory(c, lat, lng, lang).catch(() => null)))).filter(Boolean)
-  // One place never fills two school slots (a K-12 found as "elementary" and "high").
-  const seen = new Set()
-  return out.filter((p) => (seen.has(p.name) ? false : (seen.add(p.name), true)))
+  const gather = (widen) => Promise.all(POI_CATEGORIES.map((c) => placesInCategory(c, lat, lng, lang, widen).catch(() => [])))
+  let out = pickPlaces(await gather(1), MAX_PLACES)
+  // A sparse area: look twice as far before settling for fewer.
+  if (out.length < MIN_PLACES) {
+    const wider = pickPlaces(await gather(2), MAX_PLACES)
+    if (wider.length > out.length) out = wider
+  }
+  return out
 }
