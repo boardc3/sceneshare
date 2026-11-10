@@ -15,7 +15,7 @@ struct SignInView: View {
                 Text("Sceneshare")
                     .font(.system(size: 44, weight: .regular, design: .serif))
                     .padding(.top, 48)
-                Text("Show your home to buyers who can’t be there.")
+                Text("Listing-ready photos in minutes. No photographer required.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
 
