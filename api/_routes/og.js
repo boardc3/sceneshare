@@ -5,6 +5,7 @@ import { ownerAccepted, propertyRow } from '../_lib/db.js'
 import { validId } from '../_lib/gate.js'
 import { ApiError, query, route } from '../_lib/http.js'
 import { loadImageInput } from '../_lib/source.js'
+import { watermark } from '../_lib/watermark.js'
 
 // The link-preview image for a shared home (1200 × 630): its first photo split down
 // the middle — as photographed on the left, the featured design on the right — the
@@ -32,7 +33,7 @@ export default route(
     const base = await fit(photo.src)
     let out
     if (after) {
-      const right = await fit(after.src)
+      const right = await watermark(await fit(after.src), { align: 'right' }) // the AI half carries its mark
       const leftHalf = await sharp(base).extract({ left: 0, top: 0, width: W / 2, height: H }).toBuffer()
       const handle = Buffer.from(
         `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">

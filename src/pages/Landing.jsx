@@ -3,6 +3,7 @@ import AddressSearch from '../components/AddressSearch.jsx'
 import Compare from '../components/Compare.jsx'
 import HeroMap from '../components/HeroMap.jsx'
 import Pricing from '../components/Pricing.jsx'
+import { SHOW_PRICING } from '../lib/billing.js'
 import Story from '../components/Story.jsx'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
@@ -138,7 +139,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <Pricing />
+      {SHOW_PRICING && <Pricing />}
     </main>
   )
 }

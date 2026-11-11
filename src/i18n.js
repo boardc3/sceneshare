@@ -376,7 +376,8 @@ const en = {
   'nav.admin': 'Admin',
   'nav.signout': 'Sign out',
 
-  'auth.createTitle': 'Create your account',
+  'auth.createTitle': 'Create your beta account',
+  'auth.betaLimited': 'Limited users for beta testing.',
   'auth.forgotTitle': 'Reset your password',
   'auth.google': 'Continue with Google',
   'auth.or': 'or with email',
@@ -1378,7 +1379,8 @@ const zh = {
   'nav.admin': '管理',
   'nav.signout': '退出登录',
 
-  'auth.createTitle': '创建账户',
+  'auth.createTitle': '创建内测账户',
+  'auth.betaLimited': '内测阶段，用户名额有限。',
   'auth.forgotTitle': '重置密码',
   'auth.google': '使用 Google 继续',
   'auth.or': '或使用邮箱',

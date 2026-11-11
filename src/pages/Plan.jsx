@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
-import { buyCredits, buyExtra, changePlan, loadBilling, manageBilling, periodShare, planPrice, setCancel, subscribe, useBilling } from '../lib/billing.js'
+import { SHOW_PRICING, buyCredits, buyExtra, changePlan, loadBilling, manageBilling, periodShare, planPrice, setCancel, subscribe, useBilling } from '../lib/billing.js'
 import { Link, useRouter } from '../router.jsx'
 import { shown } from '../lib/api.js'
 
@@ -188,13 +188,13 @@ export default function Plan() {
         </div>
       </section>
 
-      {b.source !== 'admin' && b.mode !== 'off' && !b.early && prices && (
+      {SHOW_PRICING && b.source !== 'admin' && b.mode !== 'off' && !b.early && prices && (
         <Tiers b={b} prices={prices} plans={plans} busy={busy} run={run} managed={managed} />
       )}
 
       {b.plan === 'premium' && b.source !== 'admin' && extra && <Extras b={b} extra={extra} busy={busy} run={run} managed={managed} />}
 
-      {b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && !b.early && (
+      {SHOW_PRICING && b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && !b.early && (
         <section className="settings__card credits" id="credits" aria-labelledby="p-credits">
           <div className="plan__head">
             <div>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { useBilling } from '../lib/billing.js'
+import { SHOW_PRICING, useBilling } from '../lib/billing.js'
 import { Link } from '../router.jsx'
 import Compare from './Compare.jsx'
 import { Modal } from './Chrome.jsx'
@@ -274,7 +274,7 @@ export default function Review({ property, design, photos, name, startAt, onSave
                 : todo > 0
                   ? t('review.hint')
                   : t('review.allDone')}{' '}
-            {short && !running && <Link to="/plan#credits">{t('credits.buyMore')}</Link>}
+            {SHOW_PRICING && short && !running && <Link to="/plan#credits">{t('credits.buyMore')}</Link>}
           </p>
           <div className="review__actions">
             <button type="button" className="btn btn--quiet btn--danger review__discard" onClick={onDiscard} disabled={running}>

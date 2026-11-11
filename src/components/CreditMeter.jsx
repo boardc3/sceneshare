@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
-import { homesLeft, useBilling } from '../lib/billing.js'
+import { SHOW_PRICING, homesLeft, useBilling } from '../lib/billing.js'
 import { Link } from '../router.jsx'
 
 const R = 8
@@ -169,7 +169,7 @@ export default function CreditMeter() {
         )}
         <p className="cmeter__fine">{t('credits.explain')}{early ? ` ${t('early.fine')}` : ''}</p>
         <div className="cmeter__actions">
-          {!unlimited && b.plan !== 'none' && !early && (
+          {SHOW_PRICING && !unlimited && b.plan !== 'none' && !early && (
             <Link to="/plan#credits" className="btn btn--glow btn--small" onClick={() => (setOpen(false), track('credits_meter_buy'))}>
               {t('credits.buyMore')}
             </Link>

@@ -5811,3 +5811,11 @@ body.is-modal {
   color: inherit;
   width: fit-content;
 }
+
+.dialog__beta {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  background: color-mix(in srgb, var(--glow) 18%, transparent);
+}

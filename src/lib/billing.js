@@ -108,3 +108,8 @@ export function periodShare(b) {
 
 // Homes still available (null = unlimited).
 export const homesLeft = (b) => (b?.limits?.homes == null ? null : Math.max(0, b.limits.homes - (b.usage?.homes || 0)))
+
+// Prices are hidden during the beta (Chris, 2026-11-10: "Remove all pricing for
+// now. Just hide it."). Flip to true to bring back the pricing section, the plan
+// tiers, the credit packs and the "buy more" links.
+export const SHOW_PRICING = false

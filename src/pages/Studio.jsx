@@ -16,7 +16,7 @@ import { get, health, post, recalledProperty, retriable, shown, shrinkPhoto, sle
 import { ensureTerms, requireSignIn, useAuth } from '../lib/auth.js'
 import { defaultSides, designLabel, designName, sideImage, shortSideLabel } from '../lib/designs.js'
 import { lotSqft } from '../lib/format.js'
-import { useBilling } from '../lib/billing.js'
+import { SHOW_PRICING, useBilling } from '../lib/billing.js'
 import { useHouseRun } from '../lib/houseRun.js'
 import { useSortable } from '../lib/sortable.js'
 import { Link, useRouter } from '../router.jsx'
@@ -1059,7 +1059,7 @@ function RunCost({ need }) {
   return (
     <p className={`runcost ${short ? 'runcost--short' : ''}`}>
       {short ? t('credits.runShort', { n: need, left: c.available }) : t('credits.runLeft', { n: need, left: c.available - need })}{' '}
-      {short && (
+      {SHOW_PRICING && short && (
         <Link to="/plan#credits">{t('credits.buyMore')}</Link>
       )}
     </p>

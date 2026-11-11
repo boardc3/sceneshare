@@ -1188,9 +1188,9 @@ export async function reviewErrors({ ids = null, all = false, reviewed = true })
 export async function getImage(id) {
   const s = await ensure()
   if (!s) return null
-  const rows = await s`select content_type, encode(data, 'base64') as b64 from images where id = ${id}`
+  const rows = await s`select content_type, kind, encode(data, 'base64') as b64 from images where id = ${id}`
   if (!rows[0]) return null
-  return { contentType: rows[0].content_type, buffer: Buffer.from(rows[0].b64.replace(/\s/g, ''), 'base64') }
+  return { contentType: rows[0].content_type, kind: rows[0].kind || '', buffer: Buffer.from(rows[0].b64.replace(/\s/g, ''), 'base64') }
 }
 
 // ---------------------------------------------------------------- analytics + logs
