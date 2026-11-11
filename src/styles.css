@@ -3260,6 +3260,16 @@ body.is-modal {
   font-weight: 600;
   cursor: pointer;
 }
+.story__play {
+  top: 50%;
+  right: auto;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 14px 22px;
+  font-size: var(--step-0);
+  background: rgba(13, 21, 28, 0.78);
+  backdrop-filter: blur(6px);
+}
 .story__stage--place .story__replay {
   background: var(--dusk);
 }

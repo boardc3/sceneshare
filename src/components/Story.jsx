@@ -46,10 +46,13 @@ export default function Story() {
   const { t, lang } = useI18n()
   const box = useRef(null)
   const video = useRef(null)
+  const frame = useRef(null)
   const [stage, setStage] = useState('anywhere')
   const [mapUrl, setMapUrl] = useState(null)
   const [mapReady, setMapReady] = useState(false)
   const [started, setStarted] = useState(false)
+  // Autoplay refused (iOS Low Power Mode, data saver): offer a play button.
+  const [blocked, setBlocked] = useState(false)
   const timers = useRef([])
   const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
@@ -73,9 +76,12 @@ export default function Story() {
     return () => io.disconnect()
   }, [])
 
-  // Autoplay (muted) when the stage is on screen; reduced motion shows the end state.
+  // Autoplay (muted) when the film frame itself is on screen. Watching the frame,
+  // not the whole section: the section (with the offer grid) is taller than two
+  // screens, so half of it is never visible and the film never started.
+  // Reduced motion shows the end state.
   useEffect(() => {
-    if (!box.current) return
+    if (!frame.current) return
     if (reduce) {
       setStage('numbers')
       return
@@ -85,16 +91,23 @@ export default function Story() {
         const v = video.current
         if (!v) return
         if (e.some((x) => x.isIntersecting)) {
-          if (!started && stage !== 'place') {
-            v.play().then(() => setStarted(true)).catch(() => {})
+          if (stage === 'anywhere' || stage === 'potential') {
+            if (v.paused && !v.ended) {
+              v.play()
+                .then(() => {
+                  setStarted(true)
+                  setBlocked(false)
+                })
+                .catch(() => setBlocked(true))
+            }
           }
         } else if (!v.paused) v.pause()
       },
-      { threshold: 0.5 },
+      { threshold: 0.35 },
     )
-    io.observe(box.current)
+    io.observe(frame.current)
     return () => io.disconnect()
-  }, [reduce, started, stage])
+  }, [reduce, stage])
 
   useEffect(() => clear, [])
 
@@ -116,7 +129,12 @@ export default function Story() {
     const v = video.current
     if (v) {
       v.currentTime = 0
-      v.play().catch(() => {})
+      v.play()
+        .then(() => {
+          setStarted(true)
+          setBlocked(false)
+        })
+        .catch(() => setBlocked(true))
     }
     track('story_replay')
   }
@@ -152,7 +170,7 @@ export default function Story() {
         <p className="story__lede">{t('story.lede')}</p>
       </div>
 
-      <div className={`story__stage story__stage--${stage}`}>
+      <div className={`story__stage story__stage--${stage}`} ref={frame}>
         <video
           ref={video}
           className="story__video"
@@ -160,7 +178,8 @@ export default function Story() {
           poster="/media/story-poster.jpg"
           muted
           playsInline
-          preload="metadata"
+          preload="auto"
+          disablePictureInPicture
           onTimeUpdate={onTime}
           onEnded={onEnded}
           aria-label={t('story.videoLabel')}
@@ -196,6 +215,11 @@ export default function Story() {
           </ol>
         </div>
 
+        {blocked && !started && (stage === 'anywhere' || stage === 'potential') && (
+          <button type="button" className="story__replay story__play" onClick={replay}>
+            ▶ {t('story.play')}
+          </button>
+        )}
         {(stage === 'place' || (stage === 'numbers' && !reduce)) && (
           <button type="button" className="story__replay" onClick={replay}>
             ↺ {t('story.replay')}
