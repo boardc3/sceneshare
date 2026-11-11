@@ -657,14 +657,23 @@ export function recordView(id, { lang = null, req = null, visitorId = null, shar
   const v = visitor(req)
   return safe('recordView', async (s) => {
     let share = null
+    let opened = null
     if (shareId) {
-      const rows = await s`update shares set opens = opens + 1, last_opened_at = now() where id = ${shareId} and property_id = ${id} and tracked returning id`
+      const rows = await s`update shares set opens = opens + 1, last_opened_at = now() where id = ${shareId} and property_id = ${id} and tracked
+        returning id, opens, channel, recipients, recipient_count, user_id`
       share = rows[0]?.id || null
+      // The first time one person's emailed link is opened, its sender is told.
+      const sh = rows[0]
+      if (sh && sh.opens === 1 && sh.channel === 'email' && sh.recipient_count === 1 && sh.user_id) {
+        const [u] = await s`select email, name, prefs from users where id = ${sh.user_id}`
+        const [p] = await s`select coalesce(nullif(data->>'nickname', ''), formatted_address, 'your home') as title from properties where id = ${id}`
+        if (u?.email && u.prefs?.activityEmails !== false) opened = { to: u.email, ownerName: u.name || '', buyer: (sh.recipients || [])[0] || null, address: p?.title || 'your home', propertyId: id, country: v.country || null }
+      }
     }
     await s`insert into share_views (property_id, lang, country, referrer, user_agent, visitor_id, share_id)
       values (${id}, ${lang}, ${v.country}, ${v.referrer}, ${v.userAgent}, ${visitorId}, ${share})`
     await s`update properties set share_views = share_views + 1, last_viewed_at = now() where id = ${id}`
-    return true
+    return { opened }
   })
 }
 

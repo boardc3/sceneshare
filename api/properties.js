@@ -2,6 +2,7 @@ import { addDesign, BASE_MODES, normalizeProperty, publicView, removeDesign, rem
 import { sessionUser } from './_lib/auth.js'
 import { assertCanAddDesign, ownerPagesStatus } from './_lib/billing.js'
 import { config, TERMS_VERSION } from './_lib/config.js'
+import { sendOpenedEmail } from './_lib/mail.js'
 import { deleteDesignRows, deleteProperty, insertPhotoRows, listProperties, logSubmission, mutateProperty, ownerAccepted, propertyRow, recordView, setPhotoHidden, upsertDesign } from './_lib/db.js'
 import { newId, requireOwner, requireUser, validId } from './_lib/gate.js'
 import { ApiError, query, readJson, route, send } from './_lib/http.js'
@@ -68,7 +69,12 @@ async function read(req, res) {
   }
   if (!owner && q.view === '1') {
     const shareId = /^[a-z0-9]{10}$/.test(q.s || '') ? q.s : null
-    background(recordView(q.id, { lang: q.lang === 'zh' ? 'zh' : 'en', req, visitorId: visitorId(req), shareId }))
+    background(
+      recordView(q.id, { lang: q.lang === 'zh' ? 'zh' : 'en', req, visitorId: visitorId(req), shareId }).then((r) => {
+        const o = r?.opened
+        if (o && config.mailKey && config.mailFrom) return sendOpenedEmail({ ...o, statsUrl: `${config.siteUrl}/analytics` })
+      }),
+    )
   }
   res._meta = { propertyId: q.id, owner }
   send(res, 200, { ok: true, owner, termsAccepted: accepted, property: owner && q.full === '1' ? p : publicView(p) })

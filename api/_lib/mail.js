@@ -107,3 +107,33 @@ export async function sendRenewRequestEmail({ to, ownerName, address, renewUrl, 
     return false
   }
 }
+
+// To the owner or agent, the first time a buyer opens the link they were emailed.
+export async function sendOpenedEmail({ to, ownerName, buyer, address, statsUrl, country = null }) {
+  const who = buyer || 'A buyer'
+  const where = country ? ` (${country})` : ''
+  const subject = `${who} opened ${address} on Sceneshare`
+  const html = `<div style="font-family:Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#16212b">
+  <p style="font-size:16px;line-height:1.5">Hi${ownerName ? ` ${esc(ownerName)}` : ''},</p>
+  <p style="font-size:16px;line-height:1.5"><strong>${esc(who)}</strong> just opened the link you emailed for <strong>${esc(address)}</strong>${esc(where)}.</p>
+  <p><a href="${esc(statsUrl)}" style="display:inline-block;background:#e8a548;color:#16212b;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:600">See who has viewed it</a></p>
+  ${buyer ? `<p style="font-size:14px;color:#56656c">Reply to this email to write to ${esc(buyer)}.</p>` : ''}
+  <p style="font-size:12px;color:#56656c">You get one of these the first time each person opens your link. Turn them off in Settings (“Tell me when buyers open my homes”).</p></div>`
+  const text = `${who} just opened the link you emailed for ${address}${where}.\n\nSee who has viewed it: ${statsUrl}\n\nYou get one of these the first time each person opens your link. Turn them off in Settings.\n`
+  try {
+    const r = await fetchWithTimeout(
+      'https://api.resend.com/emails',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.mailKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: config.mailFrom, to: [to], subject, html, text, ...(buyer ? { reply_to: buyer } : {}) }),
+      },
+      15000,
+    )
+    if (!r.ok) console.error(JSON.stringify({ t: 'mail', msg: 'opened notice failed', status: r.status }))
+    return r.ok
+  } catch (e) {
+    console.error(JSON.stringify({ t: 'mail', msg: 'opened notice failed', err: e.message }))
+    return false
+  }
+}
