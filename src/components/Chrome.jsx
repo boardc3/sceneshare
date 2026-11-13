@@ -410,7 +410,6 @@ export function AuthModal() {
       {mode === 'signup' && (
         <p className="dialog__beta">
           <strong>{t('auth.betaLimited')}</strong>
-          {beta?.max > 0 && beta.left != null ? ` ${t('beta.spots', { n: beta.left, max: beta.max })}` : ''}
         </p>
       )}
       {mode !== 'forgot' && (

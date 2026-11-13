@@ -55,7 +55,6 @@ export default function Beta() {
       </button>
       <p className="fine">
         {paidBeta ? t('betaPay.joinFine', { price, n: beta.days }) : t('beta.joinFine')}
-        {left != null && beta.max > 0 ? ` ${t('beta.spots', { n: left, max: beta.max })}` : ''}
       </p>
     </div>
   )
