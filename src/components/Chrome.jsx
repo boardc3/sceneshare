@@ -407,11 +407,6 @@ export function AuthModal() {
     <Modal labelledBy="auth-h" onClose={() => close(null)}>
       <h2 id="auth-h">{title}</h2>
       {req.reason && mode !== 'forgot' && <p className="dialog__reason">{t(`auth.why.${req.reason}`)}</p>}
-      {mode === 'signup' && (
-        <p className="dialog__beta">
-          <strong>{t('auth.betaLimited')}</strong>
-        </p>
-      )}
       {mode !== 'forgot' && (
         <>
           <button type="button" className="btn btn--google" onClick={google} disabled={busy}>
