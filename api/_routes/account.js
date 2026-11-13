@@ -1,5 +1,5 @@
 import { authCall, authEnabled, sessionUser } from '../_lib/auth.js'
-import { cancelForDeletion, earlyAccess } from '../_lib/billing.js'
+import { BETA, cancelForDeletion, earlyAccess } from '../_lib/billing.js'
 import { TERMS_VERSION, config } from '../_lib/config.js'
 import { accountsCount, acceptTerms, addPrivacyRequest, deleteAuthUser, deleteUserData, exportUser, logSubmission, ownerAnalytics, setPrefs, touchUser } from '../_lib/db.js'
 import { background, ipHash } from '../_lib/log.js'
@@ -13,10 +13,10 @@ import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 // POST {op:'delete', confirm:'DELETE'}   delete the account and everything it made
 // Early access in numbers, for /beta: spots left and what an account includes.
 async function betaSpots() {
-  if (!earlyAccess()) return null
+  if (!earlyAccess() && !config.paidBeta) return null
   const max = config.maxAccounts
   const used = max ? await accountsCount().catch(() => 0) : 0
-  return { max, left: max ? Math.max(0, max - used) : null, homes: config.maxHomes, renders: config.maxRenders }
+  return { max, left: max ? Math.max(0, max - used) : null, homes: config.maxHomes, renders: config.maxRenders, price: config.paidBeta ? BETA.amount : null, days: BETA.days }
 }
 
 export default route(

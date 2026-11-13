@@ -19,6 +19,12 @@ export const PLANS = {
   premium: { homes: 5, credits: 300, emailsPerHome: null, designsPerHome: null },
   none: { homes: 0, credits: 0, emailsPerHome: 0, designsPerHome: null },
 }
+// The paid beta (Chris, 2026-11-13): one payment of $50 for 30 days, no renewal.
+// It carries the early-access allowance (ACCOUNT_MAX_HOMES / ACCOUNT_MAX_RENDERS).
+export const BETA = { amount: 5000, currency: 'usd', days: 30, renewWithinDays: 7 }
+PLANS.beta = { homes: config.maxHomes || 5, credits: config.maxRenders || 100, emailsPerHome: null, designsPerHome: null }
+// Accounts opened before the paid beta began keep free early access.
+const grandfathered = (created) => created < config.paidBetaFrom
 export const EXTRA = { perHome: 1500, creditsPerHome: 30, days: 30, currency: 'usd', maxPerPurchase: 20, maxActiveHomes: 100 }
 const extraHomes = (n) => Math.max(1, Math.min(EXTRA.maxPerPurchase, Math.floor(Number(n) || 5)))
 export const PRICES = {
@@ -67,8 +73,16 @@ export function entitlement(row, user = null) {
   // A preview subscription means nothing once real billing is on, and the reverse.
   const sourceMatches = row?.plan_source === 'preview' ? mode === 'preview' : row?.plan_source === 'stripe' ? mode === 'test' || mode === 'live' : row?.plan_source === 'comp'
   if (live && sourceMatches) return { ...base, plan: tier, paid: true }
+  // A beta pass: paid once, ends on its date (no grace period, nothing renews).
+  if (row?.plan === 'beta' && row?.plan_status === 'active' && end && end > now && sourceMatches) return { ...base, plan: 'beta', paid: true, beta: true, canManage: false }
   if (user && isAdmin(user)) return { ...base, plan: 'premium', source: 'admin', daysLeft: null, periodEnd: null }
   const created = row?.created_at ? new Date(row.created_at).getTime() : now
+  if (config.paidBeta) {
+    // Before the paid beta: the free allowance, for good, whatever the billing mode.
+    if (grandfathered(created) && config.earlyAccess && (config.maxHomes || config.maxRenders)) return { ...base, plan: 'trial', early: true, trial: { startedAt: new Date(created).toISOString(), endsAt: null, daysLeft: null, open: true } }
+    // Everyone else pays first: no trial.
+    return { ...base, betaRequired: true, betaEnded: row?.plan === 'beta' }
+  }
   // Early access: one allowance per account, with no end date.
   if (earlyAccess(mode)) return { ...base, plan: 'trial', early: true, trial: { startedAt: new Date(created).toISOString(), endsAt: null, daysLeft: null, open: true } }
   const trialEnd = created + TRIAL_DAYS * 864e5
@@ -115,6 +129,8 @@ const addMonths = (d, n) => {
 // yearly plan resets on the same day each month); the trial is one cycle; anything
 // else resets on the 1st (UTC).
 export function creditCycle(ent, now = new Date()) {
+  // The beta pass is one cycle: its 30 days.
+  if (ent.beta && ent.periodEnd) return { start: new Date(new Date(ent.periodEnd).getTime() - BETA.days * 864e5), next: new Date(ent.periodEnd) }
   if (ent.paid && ent.periodEnd) {
     let start = new Date(ent.periodEnd)
     for (let i = 0; i < 14 && start > now; i++) start = addMonths(start, -1)
@@ -216,11 +232,21 @@ export async function chargeCredit(user, { kind, ref }) {
 
 // ---------------------------------------------------------------- limit checks
 
-const PLAN_NAME = { trial: 'free trial', entry: 'Entry', premium: 'Premium', none: '' }
+const PLAN_NAME = { trial: 'free trial', entry: 'Entry', premium: 'Premium', beta: 'beta', none: '' }
 
 function limitError(kind, limit, ent) {
   if (ent.early && (kind === 'homes' || kind === 'credits')) {
     const msg = kind === 'homes' ? `Early access includes ${limit} homes per account, and you’ve added them all. Email Chris@sceneset.ai if you need more.` : `Early access includes ${limit} renders per account, and you’ve used them all. Email Chris@sceneset.ai if you need more.`
+    return new ApiError(402, 'plan_limit', msg, { limit: kind, max: limit, plan: ent.plan, early: true })
+  }
+  if (ent.betaRequired && kind === 'expired') {
+    const msg = ent.betaEnded
+      ? `Your month of beta access has ended. Another month is $${BETA.amount / 100}. Your share links stay online for ${PAGES_GRACE_DAYS} days.`
+      : `The Sceneshare beta is $${BETA.amount / 100} for one month: ${PLANS.beta.homes} homes and ${PLANS.beta.credits} renders. Pay once to start; nothing renews.`
+    return new ApiError(402, 'plan_limit', msg, { limit: 'beta', max: null, plan: 'none', beta: true, ended: Boolean(ent.betaEnded) })
+  }
+  if (ent.beta && (kind === 'homes' || kind === 'credits')) {
+    const msg = kind === 'homes' ? `The beta includes ${limit} homes, and you’ve added them all. Email Chris@sceneset.ai if you need more.` : `The beta includes ${limit} renders, and you’ve used them all. Email Chris@sceneset.ai if you need more.`
     return new ApiError(402, 'plan_limit', msg, { limit: kind, max: limit, plan: ent.plan, early: true })
   }
   const msg = {
@@ -436,6 +462,63 @@ export async function extraCheckout(user, n, origin) {
   return s.url
 }
 
+// ---------------------------------------------------------------- paid beta
+
+async function assertCanBuyBeta(user) {
+  if (!config.paidBeta) throw new ApiError(400, 'beta_off', 'The paid beta is not switched on.')
+  const ent = entitlement(await getBillingRow(user.id), user)
+  if (ent.unlimited || ent.source === 'admin' || ent.early) throw new ApiError(400, 'beta_not_needed', 'Your account already has access. There is nothing to pay.')
+  if (ent.paid && !ent.beta) throw new ApiError(400, 'beta_not_needed', 'Your account is on a plan already.')
+  if (ent.beta && ent.daysLeft > BETA.renewWithinDays) throw new ApiError(400, 'beta_active', `Your beta access runs for another ${ent.daysLeft} days. You can add a month in its last ${BETA.renewWithinDays} days.`)
+  return ent
+}
+
+// Start (or add a month to) the beta pass. A new month begins when the current one ends.
+async function grantBeta(userId, { from, source, customerId }) {
+  const row = await getBillingRow(userId)
+  const cur = row?.plan === 'beta' && row?.plan_status === 'active' && row?.plan_source === source && row?.period_end ? new Date(row.period_end).getTime() : 0
+  const start = Math.max(from, cur)
+  const patch = { plan: 'beta', addons: 0, status: 'active', source, interval: null, periodEnd: new Date(start + BETA.days * 864e5).toISOString(), cancelAtPeriodEnd: false }
+  if (customerId) patch.customerId = customerId
+  return setBilling(userId, patch)
+}
+
+export async function previewBuyBeta(user) {
+  await assertCanBuyBeta(user)
+  const id = `prev_${crypto.randomUUID()}`
+  await recordBillingEvent({ id, source: 'preview', type: 'beta', userId: user.id, data: { days: BETA.days } })
+  return grantBeta(user.id, { from: Date.now(), source: 'preview' })
+}
+
+export async function betaCheckout(user, origin) {
+  await assertCanBuyBeta(user)
+  const row = await getBillingRow(user.id)
+  const customer = await customerFor(user, row)
+  const s = await stripe('POST', 'checkout/sessions', {
+    mode: 'payment',
+    customer,
+    client_reference_id: user.id,
+    line_items: { 0: { quantity: 1, price_data: { currency: BETA.currency, unit_amount: BETA.amount, product_data: { name: `Sceneshare beta · ${BETA.days} days`, description: `${PLANS.beta.homes} homes and ${PLANS.beta.credits} renders. One payment, no renewal.` } } } },
+    payment_intent_data: { metadata: { userId: user.id, kind: 'beta' } },
+    metadata: { userId: user.id, kind: 'beta' },
+    success_url: `${origin}/plan?beta=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/plan?beta=cancel`,
+  })
+  await recordBillingEvent({ id: `co_${s.id}`, source: 'stripe', type: 'beta_checkout_started', userId: user.id, data: { session: s.id } })
+  return s.url
+}
+
+// A paid beta Checkout session opens the 30 days (from the webhook or the return
+// page; the event id makes it count once).
+export async function applyBetaSession(userId, session) {
+  if (session?.payment_status !== 'paid' || session?.metadata?.kind !== 'beta') return false
+  if (session.amount_total != null && session.amount_total < BETA.amount) return false
+  const fresh = await recordBillingEvent({ id: `beta_${session.id}`, source: 'stripe', type: 'beta_paid', userId, data: { session: session.id, amount: session.amount_total, livemode: session.livemode } })
+  if (!fresh) return false
+  await grantBeta(userId, { from: session.created ? session.created * 1000 : Date.now(), source: 'stripe', customerId: typeof session.customer === 'string' ? session.customer : session.customer?.id })
+  return true
+}
+
 // ---------------------------------------------------------------- credit packs
 
 export async function previewBuyCredits(user, packKey) {
@@ -483,6 +566,7 @@ export async function syncCreditSession(user, sessionId) {
   if (!/^cs_[A-Za-z0-9_]+$/.test(String(sessionId || ''))) return false
   const s = await stripe('GET', `checkout/sessions/${sessionId}`)
   if (s.client_reference_id !== user.id && s.metadata?.userId !== user.id) return false
+  if (s.metadata?.kind === 'beta') return applyBetaSession(user.id, s)
   return applyCreditSession(user.id, s)
 }
 
@@ -532,6 +616,8 @@ export async function syncFromStripe(user) {
   const list = await stripe('GET', 'subscriptions', { customer: row.stripe_customer_id, status: 'all', limit: 5 })
   const subs = (list.data || []).sort((a, b) => (ACTIVE.includes(b.status) - ACTIVE.includes(a.status)) || b.created - a.created)
   if (!subs[0]) return row
+  // A beta pass is not a subscription: an old, ended subscription must not replace it.
+  if (row.plan === 'beta' && !ACTIVE.includes(subs[0].status)) return row
   return applySubscription(user.id, subs[0])
 }
 

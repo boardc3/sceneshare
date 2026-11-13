@@ -1,5 +1,5 @@
 import { originOf } from '../_lib/auth.js'
-import { EXTRA, CREDIT_PACKS, PLANS, PRICES, TRIAL_DAYS, applyCreditSession, applySubscription, billingFor, changeSubscription, checkoutSession, creditsCheckout, portalSession, previewBuyCredits, previewBuyExtra, extraCheckout, previewChange, previewSetCancel, previewSubscribe, readChoice, syncCreditSession, stripe, syncFromStripe, verifyWebhook } from '../_lib/billing.js'
+import { BETA, EXTRA, CREDIT_PACKS, PLANS, PRICES, TRIAL_DAYS, applyBetaSession, betaCheckout, previewBuyBeta, applyCreditSession, applySubscription, billingFor, changeSubscription, checkoutSession, creditsCheckout, portalSession, previewBuyCredits, previewBuyExtra, extraCheckout, previewChange, previewSetCancel, previewSubscribe, readChoice, syncCreditSession, stripe, syncFromStripe, verifyWebhook } from '../_lib/billing.js'
 import { billingState, config } from '../_lib/config.js'
 import { ensureUserRow, logSubmission, recordBillingEvent, userByStripeCustomer } from '../_lib/db.js'
 import { isAdmin, requireUser, validId } from '../_lib/gate.js'
@@ -9,6 +9,7 @@ import { ApiError, query, readJson, route, send } from '../_lib/http.js'
 // POST /api/billing { op: 'checkout', tier: 'entry'|'premium', interval: 'month'|'year' }  → { url } (Stripe) or the new plan (preview)
 // POST /api/billing { op: 'change', tier }                         switch tier on an active subscription (prorated)
 // POST /api/billing { op: 'extra', homes }                         Premium: extra properties, $15 each for 30 days + 30 re-renders each
+// POST /api/billing { op: 'beta' }                                 the paid beta: $50 once for 30 days → { url } (Stripe) or the new plan (preview)
 // POST /api/billing { op: 'credits', pack: 'c100'|'c500' }        → { url } (Stripe) or the new balance (preview)
 // GET  /api/billing?session=cs_…                                  apply a paid credit purchase on return from Checkout
 // POST /api/billing { op: 'portal' }                               → { url } Stripe's billing portal
@@ -61,6 +62,9 @@ async function webhook(req, res) {
   if (SUB_EVENTS.includes(event.type)) {
     const row = await applySubscription(userId, obj)
     console.log(JSON.stringify({ t: 'billing', msg: 'subscription', type: event.type, userId, status: obj.status, plan: row?.plan }))
+  } else if ((event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') && obj.metadata?.kind === 'beta') {
+    const started = await applyBetaSession(userId, obj)
+    console.log(JSON.stringify({ t: 'billing', msg: 'beta paid', userId, session: obj.id, started }))
   } else if (event.type === 'checkout.session.completed' && (obj.metadata?.kind === 'credits' || obj.metadata?.kind === 'extra')) {
     const added = await applyCreditSession(userId, obj)
     console.log(JSON.stringify({ t: 'billing', msg: `${obj.metadata.kind} purchased`, userId, session: obj.id, added }))
@@ -95,7 +99,7 @@ export default route(
       if (q.session && (mode === 'test' || mode === 'live')) await syncCreditSession(user, q.session).catch((e) => console.error(JSON.stringify({ t: 'billing', msg: 'credit sync failed', err: e.message })))
       const b = await billingFor(user, validId(q.propertyId) ? q.propertyId : null)
       res._meta = { plan: b.plan, mode }
-      return send(res, 200, { ok: true, billing: b, plans: PLANS, prices: PRICES, extra: EXTRA, trialDays: TRIAL_DAYS, packs: CREDIT_PACKS })
+      return send(res, 200, { ok: true, billing: b, plans: PLANS, prices: PRICES, extra: EXTRA, trialDays: TRIAL_DAYS, packs: CREDIT_PACKS, beta: config.paidBeta ? { ...BETA, homes: PLANS.beta.homes, credits: PLANS.beta.credits } : null })
     }
 
     const body = await readJson(req)
@@ -104,6 +108,17 @@ export default route(
     res._meta = { op, mode }
     if (mode === 'off') throw new ApiError(400, 'billing_off', 'Plans are not switched on.')
 
+    if (op === 'beta') {
+      if (mode === 'preview') {
+        assertPreviewAllowed(user)
+        await previewBuyBeta(user)
+        await logSubmission({ user, kind: 'beta_buy', meta: { mode } })
+        return send(res, 200, { ok: true, preview: true, billing: await billingFor(user) })
+      }
+      const url = await betaCheckout(user, origin)
+      await logSubmission({ user, kind: 'beta_checkout', meta: { mode } })
+      return send(res, 200, { ok: true, url })
+    }
     if (op === 'checkout') {
       const choice = readChoice(body)
       if (mode === 'preview') {

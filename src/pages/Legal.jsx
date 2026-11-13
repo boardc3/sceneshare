@@ -146,10 +146,13 @@ function Terms() {
 
       <h2 id="subscriptions">10. Plans, subscriptions and automatic renewal</h2>
       <p>
-        New accounts start with a <strong>7-day free trial</strong>. After it, Sceneshare is offered on paid plans, <strong>Entry</strong> and <strong>Premium</strong>, with extra properties available to Premium accounts. The current prices, what each plan includes and its limits are shown on the{' '}
+        During the beta, new accounts pay a <strong>one-time fee for 30 days of beta access</strong> (see “Beta access” below); accounts opened before the paid beta began keep their early-access allowance. Otherwise new accounts start with a <strong>7-day free trial</strong>. After it, Sceneshare is offered on paid plans, <strong>Entry</strong> and <strong>Premium</strong>, with extra properties available to Premium accounts. The current prices, what each plan includes and its limits are shown on the{' '}
         <Link to="/plan">Plan and billing</Link> page before you subscribe.
       </p>
       <ul>
+        <li>
+          <strong>Beta access.</strong> Beta access is a single payment (the price is shown on the Plan and billing page before you pay) for 30 days of access with the homes and renders shown there. It is <strong>not a subscription and does not renew</strong>; when the 30 days end you can choose to pay for another period.
+        </li>
         <li>
           <strong>Automatic renewal.</strong> Each paid plan is a subscription that <strong>renews automatically</strong> at the end of each monthly or yearly period, at the
           price shown when you subscribed, and is charged to the payment method you gave, <strong>until you cancel</strong>. We will tell you before any price
