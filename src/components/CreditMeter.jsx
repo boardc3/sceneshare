@@ -82,6 +82,7 @@ export default function CreditMeter() {
   else if (paid && b.daysLeft != null) sub = t(b.cancelAtPeriodEnd ? 'credits.subEnds' : 'credits.subRenews', { n: b.daysLeft, date: date(b.periodEnd) })
   else if (early) sub = t('early.sub')
   else if (b.plan === 'trial' && b.trial) sub = t('credits.subTrial', { n: b.trial.daysLeft, date: date(b.trial.endsAt) })
+  else if (b.betaRequired) sub = t(b.betaEnded ? 'betaPay.endedTitle' : 'betaPay.title')
   else if (b.plan === 'none') sub = t('plan.expiredTitle')
 
   return (

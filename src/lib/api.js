@@ -43,7 +43,7 @@ async function handle(r, meta = {}) {
     Object.assign(err, meta, { requestId: r.headers.get('x-vercel-id') || null })
     announce(err)
     // A plan limit anywhere opens the upgrade prompt (components/Chrome.jsx).
-    if (err.code === 'plan_limit') window.dispatchEvent(new CustomEvent('ss:plan-limit', { detail: { limit: data.limit, max: data.max, plan: data.plan, message: data.message, early: Boolean(data.early) } }))
+    if (err.code === 'plan_limit') window.dispatchEvent(new CustomEvent('ss:plan-limit', { detail: { limit: data.limit, max: data.max, plan: data.plan, message: data.message, early: Boolean(data.early), beta: Boolean(data.beta), ended: Boolean(data.ended) } }))
     if (err.code === 'terms_required') window.dispatchEvent(new CustomEvent('ss:terms-required'))
     throw err
   }

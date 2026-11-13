@@ -216,10 +216,21 @@ export function UpgradePrompt() {
   return (
     <Modal labelledBy="upgrade-title" onClose={close}>
       <p className="page__eyebrow">{t('plan.limit.eyebrow')}</p>
-      <h2 id="upgrade-title">{t(info.early ? `early.limit.${info.limit}.title` : `plan.limit.${info.limit}.title`, { n: info.max })}</h2>
-      <p>{t(info.early ? `early.limit.${info.limit}.body` : `plan.limit.${info.limit}.body`, { n: info.max })}</p>
+      <h2 id="upgrade-title">{info.beta ? t(info.ended ? 'betaPay.endedTitle' : 'betaPay.title') : t(info.early ? `early.limit.${info.limit}.title` : `plan.limit.${info.limit}.title`, { n: info.max })}</h2>
+      <p>{info.beta ? t(info.ended ? 'betaPay.endedBody' : 'betaPay.body') : t(info.early ? `early.limit.${info.limit}.body` : `plan.limit.${info.limit}.body`, { n: info.max })}</p>
       <div className="dialog__actions">
-        {info.early ? (
+        {info.beta ? (
+          <button
+            type="button"
+            className="btn btn--glow"
+            onClick={() => {
+              close()
+              navigate('/plan#beta')
+            }}
+          >
+            {t('betaPay.see')}
+          </button>
+        ) : info.early ? (
           <a className="btn btn--glow" href="mailto:Chris@sceneset.ai?subject=Sceneshare%20early%20access">
             {t('early.ask')}
           </a>

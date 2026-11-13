@@ -58,6 +58,15 @@ Leaflet/Esri rule for this project, at Chris's request (2026-11-04).
 
 ## Plans and billing
 
+**Paid beta (2026-11-13).** Accounts opened on or after `PAID_BETA_FROM` (default
+2026-11-13 18:00 UTC) have no free trial: they pay $50 once for 30 days of the beta
+allowance (`ACCOUNT_MAX_HOMES` / `ACCOUNT_MAX_RENDERS`). Nothing renews; a month can be
+added in the last 7 days or after it ends. Accounts opened earlier keep free early access
+in every billing mode. `PAID_BETA=0` switches this off. Taking the payment needs
+`BILLING_MODE=stripe` with live keys (below); in `preview` only admins and
+`PREVIEW_TESTER_EMAILS` can start a beta month, and everyone else is told payments open soon.
+The webhook endpoint must also send `checkout.session.completed`.
+
 New accounts get a 7-day free trial (2 homes, 50 render credits, 10 emailed shares per home).
 Entry: $49/month or $490/year, 2 new homes a month, 150 render credits a month.
 Premium: $99/month or $990/year, 5 new homes a month, 300 render credits a month; extra

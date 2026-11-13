@@ -53,6 +53,12 @@ export const config = {
   maxHomes: Math.max(0, parseInt(env.ACCOUNT_MAX_HOMES ?? '5', 10) || 0),
   maxRenders: Math.max(0, parseInt(env.ACCOUNT_MAX_RENDERS ?? '100', 10) || 0),
   maxAccounts: Math.max(0, parseInt(env.MAX_ACCOUNTS ?? '100', 10) || 0),
+  // Paid beta (Chris, 2026-11-13: "payment is required as a 1 month beta for $50").
+  // Accounts opened on or after PAID_BETA_FROM pay once for 30 days of the beta
+  // allowance above; accounts opened before it keep their free early access.
+  // PAID_BETA=0 switches it off.
+  paidBeta: env.PAID_BETA !== '0',
+  paidBetaFrom: Date.parse(env.PAID_BETA_FROM || '') || Date.parse('2026-11-13T18:00:00Z'),
   superAdminEmails,
   // Accounts allowed to use preview-mode purchases besides admins (comma-separated).
   previewTesters: list(env.PREVIEW_TESTER_EMAILS),

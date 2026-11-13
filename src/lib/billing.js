@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react'
 import { track } from './analytics.js'
 import { get, post } from './api.js'
 
-let state = { ready: false, billing: null, plans: null, prices: null, packs: null, extra: null, trialDays: 7 }
+let state = { ready: false, billing: null, plans: null, prices: null, packs: null, extra: null, beta: null, trialDays: 7 }
 const subs = new Set()
 function set(patch) {
   state = { ...state, ...patch }
@@ -28,7 +28,7 @@ export function loadBilling({ sync = false, session = null } = {}) {
   if (inflight && !sync) return inflight
   const qs = [sync && 'sync=1', session && `session=${encodeURIComponent(session)}`].filter(Boolean).join('&')
   inflight = get(`/api/billing${qs ? `?${qs}` : ''}`)
-    .then((d) => (set({ ready: true, billing: d.billing, plans: d.plans, prices: d.prices, packs: d.packs, extra: d.extra, trialDays: d.trialDays }), d.billing))
+    .then((d) => (set({ ready: true, billing: d.billing, plans: d.plans, prices: d.prices, packs: d.packs, extra: d.extra, beta: d.beta || null, trialDays: d.trialDays }), d.billing))
     .catch(() => (set({ ready: true }), null))
     .finally(() => (inflight = null))
   return inflight
@@ -45,6 +45,19 @@ export async function subscribe({ tier, interval = 'month' }, from = 'plan') {
   }
   set({ billing: d.billing })
   track('upgrade_done', { tier, interval, mode: d.billing?.mode })
+  return { billing: d.billing }
+}
+
+// The paid beta: one payment for 30 days. Stripe Checkout, or straight away in preview.
+export async function buyBeta(from = 'plan') {
+  track('beta_buy_start', { from })
+  const d = await post('/api/billing', { op: 'beta' })
+  if (d.url) {
+    window.location.assign(d.url) // Stripe Checkout
+    return { redirecting: true }
+  }
+  set({ billing: d.billing })
+  track('beta_buy_done', { mode: d.billing?.mode })
   return { billing: d.billing }
 }
 
@@ -100,6 +113,7 @@ export async function setCancel(cancel) {
 // How much of a period is used, for the progress bar.
 export function periodShare(b) {
   if (b?.early) return null
+  if (b?.beta && b.daysLeft != null) return Math.max(0, Math.min(1, b.daysLeft / (state.beta?.days || 30)))
   if (b?.plan === 'trial' && b.trial) return Math.max(0, Math.min(1, b.trial.daysLeft / (state.trialDays || 7)))
   if (!b?.periodEnd || b.daysLeft == null) return null
   const total = b.interval === 'year' ? 365 : 30

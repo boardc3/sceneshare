@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { requireSignIn, useAuth } from '../lib/auth.js'
-import { SHOW_PRICING, buyCredits, buyExtra, changePlan, loadBilling, manageBilling, periodShare, planPrice, setCancel, subscribe, useBilling } from '../lib/billing.js'
+import { SHOW_PRICING, buyBeta, buyCredits, buyExtra, changePlan, loadBilling, manageBilling, periodShare, planPrice, setCancel, subscribe, useBilling } from '../lib/billing.js'
 import { Link, useRouter } from '../router.jsx'
 import { shown } from '../lib/api.js'
 
@@ -31,7 +31,7 @@ function Meter({ label, used, limit, t }) {
 export default function Plan() {
   const { t, lang } = useI18n()
   const { user, ready } = useAuth()
-  const { billing: b, plans, prices, packs, extra } = useBilling()
+  const { billing: b, plans, prices, packs, extra, beta } = useBilling()
   const { navigate } = useRouter()
   const [busy, setBusy] = useState(null)
   const [msg, setMsg] = useState(null)
@@ -43,7 +43,14 @@ export default function Plan() {
     const back = q.get('checkout')
     const creditsBack = q.get('credits')
     const extraBack = q.get('extra')
-    loadBilling({ sync: true, session: creditsBack === 'success' || extraBack === 'success' ? q.get('session_id') : null }).then((nb) => {
+    const betaBack = q.get('beta')
+    loadBilling({ sync: true, session: creditsBack === 'success' || extraBack === 'success' || betaBack === 'success' ? q.get('session_id') : null }).then((nb) => {
+      if (betaBack === 'success') {
+        setMsg({ ok: true, text: nb?.beta ? t('betaPay.welcome', { date: day(nb.periodEnd, lang) }) : t('plan.processing') })
+        track('beta_buy_done', { mode: nb?.mode })
+      }
+      if (betaBack === 'cancel') setMsg({ ok: false, text: t('plan.checkoutCanceled') })
+      if (betaBack) navigate('/plan', { replace: true })
       if (extraBack === 'success') setMsg({ ok: true, text: nb?.extras?.active ? t('extra.addedAny') : t('credits.processing') })
       if (extraBack === 'cancel') setMsg({ ok: false, text: t('credits.canceled') })
       if (extraBack) navigate('/plan#extras', { replace: true })
@@ -113,7 +120,7 @@ export default function Plan() {
         <Link to="/account">{t('nav.homes')}</Link> · <Link to="/settings">{t('nav.settings')}</Link>
       </p>
 
-      {(b.mode === 'preview' || b.mode === 'test') && !b.early && (
+      {(b.mode === 'preview' || b.mode === 'test') && !b.early && !(b.mode === 'preview' && (b.betaRequired || b.beta)) && (
         <p className={`plan__mode plan__mode--${b.mode}`} role="note">
           <strong>{t(`plan.mode.${b.mode}.short`)}</strong> {t(`plan.mode.${b.mode}.body`)}
         </p>
@@ -123,7 +130,7 @@ export default function Plan() {
           {msg.text}
         </p>
       )}
-      {b.plan === 'none' && (
+      {b.plan === 'none' && !b.betaRequired && (
         <section className="plan__expired" role="alert">
           <h2>{t('plan.expiredTitle')}</h2>
           <p>{t('plan.expiredBody')}</p>
@@ -142,7 +149,7 @@ export default function Plan() {
           {big != null && (
             <div className="plan__days">
               <strong>{big}</strong>
-              <span>{b.plan === 'trial' ? t('plan.trialDaysLeft') : t('plan.daysLeft')}</span>
+              <span>{b.plan === 'trial' ? t('plan.trialDaysLeft') : b.beta ? t('betaPay.daysLeft') : t('plan.daysLeft')}</span>
             </div>
           )}
         </div>
@@ -155,7 +162,8 @@ export default function Plan() {
             <div className="meter__bar meter__bar--time" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)} aria-label={t('plan.daysLeft')}>
               <span style={{ width: `${share * 100}%` }} />
             </div>
-            {paid && (
+            {b.beta && <p className="fine">{t('betaPay.endsOn', { date: day(b.periodEnd, lang) })}</p>}
+            {paid && !b.beta && (
               <p className="fine">
                 {b.cancelAtPeriodEnd ? t('plan.endsOn', { date: day(b.periodEnd, lang) }) : t('plan.renewsOn', { date: day(b.periodEnd, lang), price: money(planPrice(prices, b.plan, b.interval === 'year' ? 'year' : 'month'), lang), per: t(b.interval === 'year' ? 'plan.perYear' : 'plan.perMonth') })}
                 {b.status === 'past_due' && <> {t('plan.pastDue')}</>}
@@ -165,17 +173,17 @@ export default function Plan() {
         )}
 
         <div className="plan__meters">
-          <Meter t={t} label={t(b.early ? 'early.homes' : 'plan.m.homes')} used={b.usage.homes} limit={b.limits.homes} />
-          {b.credits && !b.credits.unlimited && <Meter t={t} label={t(b.early ? 'early.renders' : 'plan.m.credits')} used={b.credits.used} limit={b.credits.allotment} />}
+          <Meter t={t} label={t(b.early || b.beta ? 'early.homes' : 'plan.m.homes')} used={b.usage.homes} limit={b.limits.homes} />
+          {b.credits && !b.credits.unlimited && <Meter t={t} label={t(b.early || b.beta ? 'early.renders' : 'plan.m.credits')} used={b.credits.used} limit={b.credits.allotment} />}
         </div>
 
         <div className="settings__row plan__actions">
-          {paid && managed && b.source === 'stripe' && (
+          {paid && managed && b.source === 'stripe' && !b.beta && (
             <button type="button" className="btn btn--ink btn--small" disabled={!!busy} onClick={() => run('portal', manageBilling)}>
               {busy === 'portal' ? t('auth.working') : t('plan.manage')}
             </button>
           )}
-          {paid && b.mode === 'preview' && b.source === 'preview' &&
+          {paid && !b.beta && b.mode === 'preview' && b.source === 'preview' &&
             (b.cancelAtPeriodEnd ? (
               <button type="button" className="btn btn--ink btn--small" disabled={!!busy} onClick={() => run('resume', () => setCancel(false), () => t('plan.resumedMsg'))}>
                 {t('plan.resume')}
@@ -188,13 +196,33 @@ export default function Plan() {
         </div>
       </section>
 
-      {SHOW_PRICING && b.source !== 'admin' && b.mode !== 'off' && !b.early && prices && (
+      {beta && b.source !== 'admin' && b.mode !== 'off' && (b.betaRequired || (b.beta && b.daysLeft <= beta.renewWithinDays)) && (
+        <section className="settings__card plan__beta" id="beta" aria-labelledby="p-beta">
+          <p className="plan__label">{t('beta.tag')}</p>
+          <h2 id="p-beta">{t(b.beta ? 'betaPay.renewTitle' : b.betaEnded ? 'betaPay.endedTitle' : 'betaPay.title')}</h2>
+          <p className="plan__price">
+            {money(beta.amount, lang)} <span>{t('betaPay.per', { n: beta.days })}</span>
+          </p>
+          <ul>
+            <li>{t('betaPay.f.homes', { n: beta.homes })}</li>
+            <li>{t('betaPay.f.renders', { n: beta.credits })}</li>
+            <li>{t('betaPay.f.share')}</li>
+            <li>{t('betaPay.f.once')}</li>
+          </ul>
+          <button type="button" className="btn btn--glow" disabled={!!busy} onClick={() => run('beta', () => buyBeta(), (r) => t('betaPay.welcome', { date: day(r.billing.periodEnd, lang) }))}>
+            {busy === 'beta' ? t('auth.working') : t('betaPay.cta', { price: money(beta.amount, lang) })}
+          </button>
+          <p className="fine">{managed ? t('betaPay.secure') : t('betaPay.preview')}</p>
+        </section>
+      )}
+
+      {SHOW_PRICING && b.source !== 'admin' && b.mode !== 'off' && !b.early && !b.beta && !b.betaRequired && prices && (
         <Tiers b={b} prices={prices} plans={plans} busy={busy} run={run} managed={managed} />
       )}
 
       {b.plan === 'premium' && b.source !== 'admin' && extra && <Extras b={b} extra={extra} busy={busy} run={run} managed={managed} />}
 
-      {SHOW_PRICING && b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && !b.early && (
+      {SHOW_PRICING && b.credits && !b.credits.unlimited && packs && b.plan !== 'none' && !b.early && !b.beta && (
         <section className="settings__card credits" id="credits" aria-labelledby="p-credits">
           <div className="plan__head">
             <div>
@@ -230,7 +258,7 @@ export default function Plan() {
       )}
 
       <p className="fine plan__legal">
-        {t('plan.legal')} <Link to="/terms#subscriptions">{t('legal.terms')}</Link>
+        {t(beta ? 'betaPay.legal' : 'plan.legal')} <Link to="/terms#subscriptions">{t('legal.terms')}</Link>
       </p>
     </main>
   )

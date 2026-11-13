@@ -1,6 +1,7 @@
 import { useI18n } from '../i18n.js'
 import { track } from '../lib/analytics.js'
 import { useAuth } from '../lib/auth.js'
+import { useBilling } from '../lib/billing.js'
 import { Link } from '../router.jsx'
 
 // /beta: the page beta testers are sent to — what Sceneshare is, how to test it,
@@ -13,13 +14,24 @@ const MAIL = 'mailto:Chris@sceneset.ai?subject=Sceneshare%20beta%20feedback'
 export default function Beta() {
   const { t } = useI18n()
   const { user, ready, full, beta } = useAuth()
+  const { billing } = useBilling()
   const left = beta?.left
+  const paidBeta = beta?.price > 0
+  const price = paidBeta ? `$${beta.price / 100}` : ''
+  const mustPay = Boolean(user && billing?.betaRequired)
   const closed = !user && beta && beta.max > 0 && left <= 0
   const join = () => {
     track('beta_join_click')
     window.dispatchEvent(new CustomEvent('ss:signin', { detail: { mode: 'signup', reason: 'beta' } }))
   }
-  const cta = !ready ? null : user && !full ? (
+  const cta = !ready ? null : mustPay && !full ? (
+    <div className="beta__cta">
+      <p className="beta__in">{t(billing.betaEnded ? 'betaPay.endedBody' : 'betaPay.body')}</p>
+      <Link to="/plan#beta" className="btn btn--glow" onClick={() => track('beta_pay_click')}>
+        {t('betaPay.cta', { price })}
+      </Link>
+    </div>
+  ) : user && !full ? (
     <div className="beta__cta">
       <p className="beta__in">{t('beta.in')}</p>
       <Link to="/" className="btn btn--glow">
@@ -42,7 +54,7 @@ export default function Beta() {
         {t('beta.join')}
       </button>
       <p className="fine">
-        {t('beta.joinFine')}
+        {paidBeta ? t('betaPay.joinFine', { price, n: beta.days }) : t('beta.joinFine')}
         {left != null && beta.max > 0 ? ` ${t('beta.spots', { n: left, max: beta.max })}` : ''}
       </p>
     </div>
@@ -52,7 +64,7 @@ export default function Beta() {
       <header className="beta__head">
         <p className="page__eyebrow">{t('beta.eyebrow')}</p>
         <h1 className="page__title">{t('beta.title')}</h1>
-        <p className="beta__lede">{t('beta.lede')}</p>
+        <p className="beta__lede">{t(paidBeta ? 'betaPay.lede' : 'beta.lede', { price, n: beta?.days ?? 30 })}</p>
         {cta}
       </header>
 
